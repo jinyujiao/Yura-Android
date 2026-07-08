@@ -1,0 +1,65 @@
+plugins {
+    id("com.android.application")
+    kotlin("plugin.parcelize")
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.compose.compiler)
+}
+
+android {
+    namespace = "com.yura.app"
+    compileSdk = (property("android.compileSdk") as String).toInt()
+
+    defaultConfig {
+        applicationId = "com.yura.app"
+        minSdk = (property("android.minSdk") as String).toInt()
+        targetSdk = (property("android.targetSdk") as String).toInt()
+        versionCode = 1
+        versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_3
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.androidx.core)
+    implementation(libs.androidx.compose.activity)
+    implementation(libs.bundles.compose)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.lifecycle.common)
+    implementation(libs.androidx.webkit)
+    implementation(libs.coil.compose)
+    implementation(libs.jsoup)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.bundles.media3)
+    implementation(libs.bundles.room)
+    ksp(libs.androidx.room.compiler)
+
+    implementation(project(":readium:readium-shared"))
+    implementation(project(":readium:readium-streamer"))
+    implementation(project(":readium:readium-navigator"))
+    implementation(project(":readium:navigators:readium-navigator-common"))
+    implementation(project(":readium:navigators:web:readium-navigator-web-common"))
+    implementation(project(":readium:navigators:web:readium-navigator-web-reflowable"))
+    implementation(project(":readium:navigators:web:readium-navigator-web-fixedlayout"))
+}
