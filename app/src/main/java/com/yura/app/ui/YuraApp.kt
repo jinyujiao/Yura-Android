@@ -337,12 +337,12 @@ private fun LibraryScreen(
                         verticalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "涔︽灦杩樻槸绌虹殑",
+                            "\u4e66\u67b6\u8fd8\u662f\u7a7a\u7684",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "鐐瑰嚮鍙充笂瑙?+ 瀵煎叆鏈湴 EPUB銆?,
+                            "\u70b9\u51fb\u53f3\u4e0a\u89d2 + \u5bfc\u5165\u672c\u5730 EPUB\u3002",
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -373,8 +373,8 @@ private fun ShelfBookCard(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("鍒犻櫎涔︾睄") },
-            text = { Text("纭畾瑕佸垹闄ゃ€?{book.title}銆嬪悧锛熺瑪璁板拰闃呰杩涘害涔熶細涓€璧风Щ闄ゃ€?) },
+            title = { Text("\u5220\u9664\u4e66\u7c4d") },
+            text = { Text("\u786e\u5b9a\u8981\u5220\u9664\u300a${book.title}\u300b\u5417\uff1f") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -382,12 +382,12 @@ private fun ShelfBookCard(
                         onDelete()
                     },
                 ) {
-                    Text("鍒犻櫎")
+                    Text("删除")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
-                    Text("鍙栨秷")
+                    Text("取消")
                 }
             },
         )
@@ -442,7 +442,7 @@ private fun ShelfBookCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                book.author.ifBlank { "鏈煡浣滆€? },
+                book.author.ifBlank { "\u672a\u77e5\u4f5c\u8005" },
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -480,8 +480,8 @@ private fun BookCard(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("鍒犻櫎涔︾睄") },
-            text = { Text("纭畾瑕佸垹闄ゃ€?{book.title}銆嬪悧锛熺瑪璁板拰闃呰杩涘害涔熶細涓€璧风Щ闄ゃ€?) },
+            title = { Text("\u5220\u9664\u4e66\u7c4d") },
+            text = { Text("\u786e\u5b9a\u8981\u5220\u9664\u300a${book.title}\u300b\u5417\uff1f") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -489,12 +489,12 @@ private fun BookCard(
                         onDelete()
                     },
                 ) {
-                    Text("鍒犻櫎")
+                    Text("删除")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
-                    Text("鍙栨秷")
+                    Text("取消")
                 }
             },
         )
@@ -550,12 +550,12 @@ private fun BookCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    book.author.ifBlank { "鏈煡浣滆€? },
+                    book.author.ifBlank { "\u672a\u77e5\u4f5c\u8005" },
                     maxLines = 1,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                AssistChip(onClick = onClick, label = { Text("缁х画闃呰") })
+                AssistChip(onClick = onClick, label = { Text("\u7ee7\u7eed\u9605\u8bfb") })
             }
         }
     }

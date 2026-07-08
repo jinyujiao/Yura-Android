@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -154,14 +156,8 @@ class ReaderActivity : FragmentActivity() {
         pendingForegroundTtsLocator?.let { locator ->
             pendingForegroundTtsLocator = null
             navigatorFragment?.go(locator, animated = false)
-            lifecycleScope.launch {
-                kotlinx.coroutines.delay(900)
-                syncForegroundTtsHighlight()
-            }
-        } ?: lifecycleScope.launch {
-            kotlinx.coroutines.delay(300)
-            syncForegroundTtsHighlight()
-        }
+            scheduleForegroundTtsSync(900)
+        } ?: scheduleForegroundTtsSync(300)
     }
 
     override fun onStop() {
@@ -308,6 +304,7 @@ class ReaderActivity : FragmentActivity() {
                     onClick = {
                         controlsVisible = false
                         ttsVisible = true
+                        syncForegroundTtsHighlight()
                     },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -321,6 +318,8 @@ class ReaderActivity : FragmentActivity() {
             if (tocVisible && ready != null) {
                 TocSheet(
                     links = ready.publication.tableOfContents,
+                    publication = ready.publication,
+                    currentLocator = currentLocator,
                     onDismiss = { tocVisible = false },
                     onGo = { link ->
                         ready.publication.locatorFromLink(link)?.let { locator ->
@@ -394,11 +393,7 @@ class ReaderActivity : FragmentActivity() {
 
     private fun cleanTtsTextForSync(text: String): String =
         text
-            .replace(Regex("[鈥溾€漒"鈥樷€?]\\s*(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\\s*){2,}[鈥溾€漒"鈥樷€?]"), " ")
-            .replace(Regex("(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\\s*){2,}"), " ")
-            .replace(Regex("[鈥斺€?]{2,}"), " ")
-            .replace(Regex("[~锝瀇锛?锛?锛?锛僝{2,}"), " ")
-            .replace(Regex("([銆傦紒锛??锛?銆侊紱;锛?])\\1+"), "$1")
+            .replace(Regex("[.。…·•_\\-~]{2,}"), " ")
             .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -409,7 +404,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val webView = navigatorFragment?.publicationView?.let { findWebView(it) }
         if (webView == null) {
-            Toast.makeText(this, "褰撳墠椤甸潰杩樻病鏈夊噯澶囧ソ鏈楄", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "\u5f53\u524d\u9875\u9762\u8fd8\u6ca1\u6709\u51c6\u5907\u597d\u6717\u8bfb", Toast.LENGTH_SHORT).show()
             return
         }
         currentTtsWebView = webView
@@ -425,11 +420,7 @@ class ReaderActivity : FragmentActivity() {
                 }
                 function cleanTtsText(text) {
                     return (text || '')
-                        .replace(/[鈥溾€?鈥樷€?]\s*(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\s*){2,}[鈥溾€?鈥樷€?]/g, ' ')
-                        .replace(/(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\s*){2,}/g, ' ')
-                        .replace(/[鈥斺€?]{2,}/g, ' ')
-                        .replace(/[~锝瀇锛?锛?锛?锛僝{2,}/g, ' ')
-                        .replace(/([銆傦紒锛??锛?銆侊紱;锛?])\1+/g, '$1')
+                        .replace(/[.。…·•_\-~]{2,}/g, ' ')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();
@@ -512,7 +503,7 @@ class ReaderActivity : FragmentActivity() {
             )
 
             if (paragraphs.isEmpty()) {
-                Toast.makeText(this, "娌℃湁鍙湕璇荤殑鏂囧瓧", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "\u6ca1\u6709\u53ef\u6717\u8bfb\u7684\u6587\u5b57", Toast.LENGTH_SHORT).show()
             } else {
                 ttsController.speak(paragraphs, firstVisible)
             }
@@ -598,6 +589,15 @@ class ReaderActivity : FragmentActivity() {
         tagCurrentPageForTtsHighlight(targetIndex)
     }
 
+    private fun scheduleForegroundTtsSync(delayMillis: Long) {
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(delayMillis)
+            syncForegroundTtsHighlight()
+            kotlinx.coroutines.delay(450)
+            syncForegroundTtsHighlight()
+        }
+    }
+
     private fun tagCurrentPageForTtsHighlight(targetParagraphIndex: Int) {
         val webView = navigatorFragment?.publicationView?.let { findWebView(it) } ?: return
         currentTtsWebView = webView
@@ -612,11 +612,7 @@ class ReaderActivity : FragmentActivity() {
                 }
                 function cleanTtsText(text) {
                     return (text || '')
-                        .replace(/[鈥溾€?鈥樷€?]\s*(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\s*){2,}[鈥溾€?鈥樷€?]/g, ' ')
-                        .replace(/(?:[.锛庯健锕掆€ぢ封€兓鈥︹嫰锔欙赴]\s*){2,}/g, ' ')
-                        .replace(/[鈥斺€?]{2,}/g, ' ')
-                        .replace(/[~锝瀇锛?锛?锛?锛僝{2,}/g, ' ')
-                        .replace(/([銆傦紒锛??锛?銆侊紱;锛?])\1+/g, '$1')
+                        .replace(/[.。…·•_\-~]{2,}/g, ' ')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();
@@ -659,6 +655,7 @@ class ReaderActivity : FragmentActivity() {
             activeTtsReadingOrderIndex = -1
             currentTtsDomIndexByParagraph = emptyList()
             highlightTtsParagraph(-1)
+            ttsController.stop()
             return
         }
         val locator = publication.locatorFromLink(link)
@@ -776,21 +773,21 @@ class ReaderActivity : FragmentActivity() {
     private suspend fun openBook(bookId: Long, initialPreferences: EpubPreferences): ReaderState =
         withContext(Dispatchers.IO) {
             runCatching {
-                val book = dao.book(bookId) ?: error("鎵句笉鍒拌繖鏈功")
+                val book = dao.book(bookId) ?: error("\u627e\u4e0d\u5230\u8fd9\u672c\u4e66")
                 dao.markBookRead(bookId, System.currentTimeMillis())
                 val openedAsset = readium.assetRetriever.retrieve(book.url, book.mediaType)
-                    .getOrElse { error("鏃犳硶璇诲彇鍥句功锛?{it.message}") }
+                    .getOrElse { error("无法读取图书：${it.message}") }
                 val openedPublication = readium.publicationOpener.open(
                     openedAsset,
                     allowUserInteraction = true,
-                ).getOrElse { error("鏃犳硶鎵撳紑鍥句功锛?{it.message}") }
+                ).getOrElse { error("\u65e0\u6cd5\u6253\u5f00\u56fe\u4e66\uff1a${it.message}") }
 
                 if (!openedPublication.conformsTo(Publication.Profile.EPUB) &&
                     !openedPublication.readingOrder.allAreHtml
                 ) {
                     openedPublication.close()
                     openedAsset.close()
-                    error("褰撳墠闃呰鍣ㄥ彧鏀寔 EPUB")
+                    error("\u5f53\u524d\u9605\u8bfb\u5668\u53ea\u652f\u6301 EPUB")
                 }
 
                 asset = openedAsset
@@ -805,7 +802,7 @@ class ReaderActivity : FragmentActivity() {
                     navigatorFactory = EpubNavigatorFactory(openedPublication),
                 )
             }.getOrElse {
-                ReaderState.Error(it.message ?: "鎵撳紑鍥句功澶辫触")
+                ReaderState.Error(it.message ?: "\u6253\u5f00\u56fe\u4e66\u5931\u8d25")
             }
         }
 
@@ -995,12 +992,10 @@ private fun TtsFloatingButton(
         modifier = modifier,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("鈻?, fontWeight = FontWeight.Black)
-            Text("鏈楄", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text("朗读中", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
         }
     }
 }
@@ -1036,16 +1031,16 @@ private fun TtsPanel(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("鏈楄鎺у埗", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+            Text("\u6717\u8bfb\u63a7\u5236", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             Text(
-                chapterTitle.ifBlank { "褰撳墠绔犺妭" },
+                chapterTitle.ifBlank { "\u5f53\u524d\u7ae0\u8282" },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                uiState.currentSentence.ifBlank { uiState.errorMessage ?: "鍑嗗鏈楄" },
+                uiState.currentSentence.ifBlank { uiState.errorMessage ?: "\u51c6\u5907\u6717\u8bfb" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (uiState.errorMessage == null) {
                     MaterialTheme.colorScheme.onBackground
@@ -1067,7 +1062,7 @@ private fun TtsPanel(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("鍊嶉€?, fontWeight = FontWeight.Bold)
+                Text("\u500d\u901f", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 Text("${uiState.playbackSpeed.formatSpeed()}x", color = MaterialTheme.colorScheme.primary)
             }
@@ -1082,7 +1077,7 @@ private fun TtsPanel(
             )
 
             Text(
-                "鍙ュ瓙 ${(uiState.sentenceIndex + 1).coerceAtLeast(0)} / ${uiState.sentenceTotal}  娈佃惤 ${(uiState.paragraphIndex + 1).coerceAtLeast(0)} / ${uiState.paragraphTotal}",
+                "\u53e5\u5b50 ${(uiState.sentenceIndex + 1).coerceAtLeast(0)} / ${uiState.sentenceTotal}  \u6bb5\u843d ${(uiState.paragraphIndex + 1).coerceAtLeast(0)} / ${uiState.paragraphTotal}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1092,7 +1087,7 @@ private fun TtsPanel(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = controller::previous) { Text("涓婁竴鍙?) }
+                TextButton(onClick = controller::previous) { Text("\u4e0a\u4e00\u53e5") }
                 TextButton(
                     onClick = {
                         if (playing) {
@@ -1102,16 +1097,16 @@ private fun TtsPanel(
                         }
                     },
                 ) {
-                    Text(if (playing) "鏆傚仠" else "鎾斁")
+                    Text(if (playing) "\u6682\u505c" else "\u64ad\u653e")
                 }
-                TextButton(onClick = controller::next) { Text("涓嬩竴鍙?) }
+                TextButton(onClick = controller::next) { Text("\u4e0b\u4e00\u53e5") }
                 TextButton(
                     onClick = {
                         controller.stop()
                         onDismiss()
                     },
                 ) {
-                    Text("鍋滄")
+                    Text("\u505c\u6b62")
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -1460,7 +1455,7 @@ private fun ErrorReader(message: String, onBack: () -> Unit) {
         ) {
             Text(message, textAlign = TextAlign.Center)
             Button(onClick = onBack) {
-                Text("杩斿洖涔︽灦")
+                Text("\u8fd4\u56de\u4e66\u67b6")
             }
         }
     }
@@ -1470,6 +1465,7 @@ private fun ErrorReader(message: String, onBack: () -> Unit) {
 private fun ReaderTopBar(title: String, onBack: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 3.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -1480,7 +1476,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) {
-                Text("<")
+                Text("<", color = MaterialTheme.colorScheme.onSurface)
             }
             Text(
                 text = title,
@@ -1489,6 +1485,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.padding(horizontal = 24.dp))
         }
@@ -1503,6 +1500,7 @@ private fun ReaderControlBar(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 6.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         modifier = Modifier.fillMaxWidth(),
@@ -1514,9 +1512,9 @@ private fun ReaderControlBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onToc) { Text("鐩綍") }
+            TextButton(onClick = onToc) { Text("\u76ee\u5f55") }
             TextButton(onClick = onSettings) { Text("Aa") }
-            TextButton(onClick = onTts) { Text("鏈楄") }
+            TextButton(onClick = onTts) { Text("\u6717\u8bfb") }
         }
     }
 }
@@ -1525,11 +1523,19 @@ private fun ReaderControlBar(
 @Composable
 private fun TocSheet(
     links: List<Link>,
+    publication: Publication,
+    currentLocator: Locator?,
     onDismiss: () -> Unit,
     onGo: (Link) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val entries = remember(links) { flattenToc(links) }
+    val activeIndex = remember(entries, currentLocator) {
+        findActiveTocIndex(entries, publication, currentLocator)
+    }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = activeIndex.coerceAtLeast(0),
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1546,7 +1552,7 @@ private fun TocSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                "鐩綍",
+                "\u76ee\u5f55",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -1560,21 +1566,27 @@ private fun TocSheet(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        "杩欐湰涔︽病鏈夋彁渚涚洰褰曘€?,
+                        "\u8fd9\u672c\u4e66\u6ca1\u6709\u63d0\u4f9b\u76ee\u5f55\u3002",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     )
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 520.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(entries, key = { "${it.depth}-${it.link.href}" }) { entry ->
-                        TocRow(link = entry.link, depth = entry.depth, onGo = onGo)
+                    itemsIndexed(entries, key = { _, entry -> "${entry.depth}-${entry.link.href}" }) { index, entry ->
+                        TocRow(
+                            link = entry.link,
+                            depth = entry.depth,
+                            selected = index == activeIndex,
+                            onGo = onGo,
+                        )
                     }
                 }
             }
@@ -1587,6 +1599,7 @@ private fun TocSheet(
 private fun TocRow(
     link: Link,
     depth: Int,
+    selected: Boolean,
     onGo: (Link) -> Unit,
 ) {
     TextButton(
@@ -1595,7 +1608,9 @@ private fun TocRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                color = if (depth == 0) {
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                } else if (depth == 0) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
@@ -1612,7 +1627,8 @@ private fun TocRow(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -1632,4 +1648,32 @@ private fun flattenToc(links: List<Link>): List<TocEntry> {
     }
     append(links, 0)
     return result
+}
+
+private fun findActiveTocIndex(
+    entries: List<TocEntry>,
+    publication: Publication,
+    currentLocator: Locator?,
+): Int {
+    if (entries.isEmpty() || currentLocator == null) return -1
+    val currentHref = currentLocator.href.toString().substringBefore('#')
+    val currentProgression = currentLocator.locations.totalProgression ?: -1.0
+
+    val hrefMatch = entries.indexOfLast { entry ->
+        val entryHref = entry.link.href.toString().substringBefore('#')
+        currentHref == entryHref || currentHref.startsWith(entryHref) || entryHref.startsWith(currentHref)
+    }
+    if (hrefMatch >= 0) return hrefMatch
+
+    if (currentProgression < 0.0) return -1
+    var bestIndex = -1
+    var bestProgression = -1.0
+    entries.forEachIndexed { index, entry ->
+        val progression = publication.locatorFromLink(entry.link)?.locations?.totalProgression ?: return@forEachIndexed
+        if (progression <= currentProgression && progression >= bestProgression) {
+            bestProgression = progression
+            bestIndex = index
+        }
+    }
+    return bestIndex
 }

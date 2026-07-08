@@ -779,8 +779,12 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             stop()
             return
         }
-        stop()
-        onQueueEnded?.invoke()
+        val queueEnded = onQueueEnded
+        if (queueEnded == null) {
+            stop()
+        } else {
+            queueEnded.invoke()
+        }
     }
 
     private fun synthesizeSentence(sentenceIndex: Int) {
