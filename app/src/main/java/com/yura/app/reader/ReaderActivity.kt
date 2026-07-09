@@ -14,16 +14,24 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +41,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -63,10 +72,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
@@ -79,6 +92,7 @@ import com.yura.app.library.ReadiumServices
 import com.yura.app.reader.tts.SimpleTtsController
 import com.yura.app.ui.theme.YuraTheme
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -300,19 +314,18 @@ class ReaderActivity : FragmentActivity() {
                 onDismiss = { ttsVisible = false },
             )
             if (ttsActive && !ttsVisible) {
-                TtsFloatingButton(
+                DraggableTtsFloatingButton(
                     onClick = {
                         controlsVisible = false
                         ttsVisible = true
                         syncForegroundTtsHighlight()
                     },
+                    controlsVisible = controlsVisible,
+                    loadPosition = ::loadTtsFloatingPosition,
+                    savePosition = ::saveTtsFloatingPosition,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .navigationBarsPadding()
-                        .padding(
-                            end = 20.dp,
-                            bottom = if (controlsVisible) 116.dp else 28.dp,
-                        ),
+                        .fillMaxSize()
+                        .navigationBarsPadding(),
                 )
             }
             if (tocVisible && ready != null) {
@@ -987,12 +1000,72 @@ class ReaderActivity : FragmentActivity() {
     private fun saveReaderPreferences(preferences: EpubPreferences) =
         ReaderPreferencesStore.save(this, preferences)
 
+    private fun loadTtsFloatingPosition(): Pair<Float, Float> {
+        val prefs = getSharedPreferences("reader-tts-floating", Context.MODE_PRIVATE)
+        return Pair(
+            prefs.getFloat("x_fraction", 1f).coerceIn(0f, 1f),
+            prefs.getFloat("y_fraction", 1f).coerceIn(0f, 1f),
+        )
+    }
+
+    private fun saveTtsFloatingPosition(position: Pair<Float, Float>) {
+        getSharedPreferences("reader-tts-floating", Context.MODE_PRIVATE)
+            .edit()
+            .putFloat("x_fraction", position.first.coerceIn(0f, 1f))
+            .putFloat("y_fraction", position.second.coerceIn(0f, 1f))
+            .apply()
+    }
+
     companion object {
         private const val EXTRA_BOOK_ID = "book_id"
         private const val NAVIGATOR_TAG = "navigator"
         fun intent(context: Context, bookId: Long): Intent =
             Intent(context, ReaderActivity::class.java)
                 .putExtra(EXTRA_BOOK_ID, bookId)
+    }
+}
+
+@Composable
+private fun DraggableTtsFloatingButton(
+    onClick: () -> Unit,
+    controlsVisible: Boolean,
+    loadPosition: () -> Pair<Float, Float>,
+    savePosition: (Pair<Float, Float>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        var position by remember { mutableStateOf(loadPosition()) }
+        val maxX = with(density) { (maxWidth - 116.dp).toPx().coerceAtLeast(0f) }
+        val bottomReserve = if (controlsVisible) 116.dp else 28.dp
+        val maxY = with(density) { (maxHeight - bottomReserve - 56.dp).toPx().coerceAtLeast(0f) }
+
+        TtsFloatingButton(
+            onClick = onClick,
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = (position.first.coerceIn(0f, 1f) * maxX).roundToInt(),
+                        y = (position.second.coerceIn(0f, 1f) * maxY).roundToInt(),
+                    )
+                }
+                .pointerInput(maxX, maxY) {
+                    detectDragGestures(
+                        onDragEnd = { savePosition(position) },
+                        onDragCancel = { savePosition(position) },
+                    ) { change, dragAmount ->
+                        change.consume()
+                        val currentX = position.first.coerceIn(0f, 1f) * maxX
+                        val currentY = position.second.coerceIn(0f, 1f) * maxY
+                        val nextX = (currentX + dragAmount.x).coerceIn(0f, maxX)
+                        val nextY = (currentY + dragAmount.y).coerceIn(0f, maxY)
+                        position = Pair(
+                            if (maxX <= 0f) 0f else nextX / maxX,
+                            if (maxY <= 0f) 0f else nextY / maxY,
+                        )
+                    }
+                },
+        )
     }
 }
 
@@ -1456,11 +1529,70 @@ private fun ReaderHud(
 
 @Composable
 private fun LoadingReader() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(30.dp),
-            strokeWidth = 3.dp,
-        )
+    val transition = rememberInfiniteTransition(label = "reader-loading")
+    val pageLift by transition.animateFloat(
+        initialValue = 0.74f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "reader-page-lift",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+            modifier = Modifier.padding(32.dp),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(28.dp),
+                modifier = Modifier.size(width = 118.dp, height = 82.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                        shape = RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp),
+                    ) {}
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.58f),
+                        shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .graphicsLayer {
+                                scaleX = pageLift
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                            },
+                    ) {}
+                }
+            }
+            Text(
+                text = "\u6b63\u5728\u7ffb\u5f00\u4e66\u9875",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = "\u8bfb\u53d6\u8fdb\u5ea6\u548c\u6392\u7248\u504f\u597d",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -1483,9 +1615,10 @@ private fun ErrorReader(message: String, onBack: () -> Unit) {
 @Composable
 private fun ReaderTopBar(title: String, onBack: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 3.dp,
+        tonalElevation = 1.dp,
+        shadowElevation = 3.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -1495,7 +1628,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) {
-                Text("<", color = MaterialTheme.colorScheme.onSurface)
+                Text("\u2039", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineSmall)
             }
             Text(
                 text = title,
@@ -1518,23 +1651,39 @@ private fun ReaderControlBar(
     onTts: () -> Unit,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 6.dp,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        tonalElevation = 2.dp,
+        shadowElevation = 8.dp,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onToc) { Text("\u76ee\u5f55") }
-            TextButton(onClick = onSettings) { Text("Aa") }
-            TextButton(onClick = onTts) { Text("\u6717\u8bfb") }
+            ReaderControlAction(label = "\u76ee\u5f55", onClick = onToc)
+            ReaderControlAction(label = "Aa", onClick = onSettings)
+            ReaderControlAction(label = "\u6717\u8bfb", onClick = onTts)
         }
+    }
+}
+
+@Composable
+private fun ReaderControlAction(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -1683,6 +1832,27 @@ private fun findActiveTocIndex(
         currentHref == entryHref || currentHref.startsWith(entryHref) || entryHref.startsWith(currentHref)
     }
     if (hrefMatch >= 0) return hrefMatch
+
+    val currentReadingOrderIndex = publication.readingOrder.indexOfFirst { link ->
+        val linkHref = link.href.toString().substringBefore('#')
+        currentHref == linkHref || currentHref.startsWith(linkHref) || linkHref.startsWith(currentHref)
+    }
+    if (currentReadingOrderIndex >= 0) {
+        var bestIndex = -1
+        var bestReadingOrderIndex = -1
+        entries.forEachIndexed { index, entry ->
+            val entryHref = entry.link.href.toString().substringBefore('#')
+            val entryReadingOrderIndex = publication.readingOrder.indexOfFirst { link ->
+                val linkHref = link.href.toString().substringBefore('#')
+                entryHref == linkHref || entryHref.startsWith(linkHref) || linkHref.startsWith(entryHref)
+            }
+            if (entryReadingOrderIndex in 0..currentReadingOrderIndex && entryReadingOrderIndex >= bestReadingOrderIndex) {
+                bestReadingOrderIndex = entryReadingOrderIndex
+                bestIndex = index
+            }
+        }
+        if (bestIndex >= 0) return bestIndex
+    }
 
     if (currentProgression < 0.0) return -1
     var bestIndex = -1

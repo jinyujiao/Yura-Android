@@ -5,6 +5,12 @@ package com.yura.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -29,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -94,6 +101,7 @@ import com.yura.app.sync.WebDavSyncRepository
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -115,12 +123,20 @@ fun YuraApp() {
     val libraryState by libraryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
+    val scope = rememberCoroutineScope()
+    var launchVisible by remember { mutableStateOf(true) }
+    var openingBook by remember { mutableStateOf<Book?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
             libraryViewModel.importPublication(uri)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        delay(900)
+        launchVisible = false
     }
 
     LaunchedEffect(libraryState.message) {
@@ -196,7 +212,14 @@ fun YuraApp() {
                         RootTab.Library -> LibraryScreen(
                             state = libraryState,
                             onOpenReader = { book ->
-                                context.startActivity(ReaderActivity.intent(context, book.id))
+                                if (openingBook == null) {
+                                    openingBook = book
+                                    scope.launch {
+                                        delay(420)
+                                        context.startActivity(ReaderActivity.intent(context, book.id))
+                                        openingBook = null
+                                    }
+                                }
                             },
                             onDeleteBook = libraryViewModel::deleteBook,
                         )
@@ -216,6 +239,140 @@ fun YuraApp() {
                     .navigationBarsPadding()
                     .padding(bottom = 8.dp),
             )
+        }
+    }
+    BookOpeningOverlay(book = openingBook)
+    AppLaunchOverlay(visible = launchVisible)
+}
+
+@Composable
+private fun AppLaunchOverlay(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(160)),
+        exit = fadeOut(animationSpec = tween(360)),
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(30f),
+    ) {
+        val markScale by animateFloatAsState(
+            targetValue = if (visible) 1f else 0.96f,
+            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            label = "launch-mark-scale",
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.graphicsLayer {
+                    scaleX = markScale
+                    scaleY = markScale
+                },
+            ) {
+                ReaderGlyph(size = 76)
+                Text(
+                    text = "Yura",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookOpeningOverlay(book: Book?) {
+    AnimatedVisibility(
+        visible = book != null,
+        enter = fadeIn(animationSpec = tween(120)),
+        exit = fadeOut(animationSpec = tween(180)),
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(20f),
+    ) {
+        val coverScale by animateFloatAsState(
+            targetValue = if (book != null) 1f else 0.86f,
+            animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+            label = "opening-book-scale",
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.graphicsLayer {
+                    scaleX = coverScale
+                    scaleY = coverScale
+                },
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 10.dp,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier
+                        .width(148.dp)
+                        .aspectRatio(0.68f),
+                ) {
+                    if (book != null) {
+                        AsyncImage(
+                            model = File(book.cover),
+                            contentDescription = book.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(18.dp)),
+                        )
+                    }
+                }
+                Text(
+                    text = "正在打开",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderGlyph(size: Int) {
+    Box(
+        modifier = Modifier
+            .size(size.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.primary),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp, topEnd = 3.dp, bottomEnd = 3.dp),
+                modifier = Modifier
+                    .width((size * 0.22f).dp)
+                    .height((size * 0.52f).dp),
+            ) {}
+            Surface(
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.68f),
+                shape = RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 10.dp, bottomEnd = 10.dp),
+                modifier = Modifier
+                    .width((size * 0.22f).dp)
+                    .height((size * 0.52f).dp),
+            ) {}
         }
     }
 }
@@ -313,8 +470,13 @@ private fun LibraryScreen(
         horizontalArrangement = Arrangement.spacedBy(28.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
+        if (state.isImporting) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                ImportStatusBanner()
+            }
+        }
         if (state.isLoading) {
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -328,7 +490,7 @@ private fun LibraryScreen(
                 }
             }
         } else if (state.books.isEmpty()) {
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Surface(
                     shape = RoundedCornerShape(28.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -362,6 +524,32 @@ private fun LibraryScreen(
     }
 }
 
+@Composable
+private fun ImportStatusBanner() {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = "\u6b63\u5728\u5bfc\u5165 EPUB...",
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ShelfBookCard(
@@ -371,6 +559,7 @@ private fun ShelfBookCard(
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
+    val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
 
     if (confirmDelete) {
         AlertDialog(
@@ -398,25 +587,23 @@ private fun ShelfBookCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                clip = false
+                shadowElevation = 0f
+            }
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { confirmDelete = true },
             ),
     ) {
         Surface(
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 5.dp,
-            shadowElevation = 18.dp,
+            tonalElevation = 2.dp,
+            shadowElevation = 8.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.68f)
-                .shadow(
-                    elevation = 18.dp,
-                    shape = RoundedCornerShape(22.dp),
-                    ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                    spotColor = Color.Black.copy(alpha = 0.24f),
-                ),
+                .aspectRatio(0.68f),
         ) {
             AsyncImage(
                 model = File(book.cover),
@@ -424,17 +611,17 @@ private fun ShelfBookCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(22.dp)),
+                    .clip(RoundedCornerShape(18.dp)),
             )
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(11.dp))
         Text(
             book.title,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(4.dp))
@@ -459,18 +646,37 @@ private fun ShelfBookCard(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progressFraction)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.86f)),
+            )
+        }
     }
 }
 
 private fun bookProgressLabel(progression: String): String {
-    val percent = runCatching {
+    val percent = bookProgressFraction(progression).toDouble()
+    return "${(percent * 100).toInt()}%"
+}
+
+private fun bookProgressFraction(progression: String): Float =
+    runCatching {
         JSONObject(progression)
             .optJSONObject("locations")
             ?.optDouble("totalProgression", 0.0)
             ?: 0.0
-    }.getOrDefault(0.0).coerceIn(0.0, 1.0)
-    return "${(percent * 100).toInt()}%"
-}
+    }.getOrDefault(0.0).coerceIn(0.0, 1.0).toFloat()
 
 @Composable
 private fun BookCard(
@@ -605,7 +811,7 @@ private fun SettingsHubScreen(
                 },
             )
         }
-        SettingsDetail.WebDav -> SettingsDetailScaffold("WebDAV", onBack = { detail = null }) {
+        SettingsDetail.WebDav -> SettingsDetailScaffold("\u540c\u6b65\u8bbe\u7f6e", onBack = { detail = null }) {
             WebDavSettingsPage()
         }
         SettingsDetail.About -> SettingsDetailScaffold("\u5173\u4e8e", onBack = { detail = null }) {
@@ -632,7 +838,7 @@ private fun SettingsHome(onOpen: (SettingsDetail) -> Unit) {
             }
         }
         item {
-            SettingsEntryRow("WebDAV", "\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6", "\u21c4") {
+            SettingsEntryRow("\u540c\u6b65\u8bbe\u7f6e", "WebDAV", "\u21c4") {
                 onOpen(SettingsDetail.WebDav)
             }
         }
