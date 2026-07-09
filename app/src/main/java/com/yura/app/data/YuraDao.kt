@@ -1,6 +1,5 @@
 package com.yura.app.data
 
-import androidx.annotation.ColorInt
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -42,27 +41,6 @@ interface YuraDao {
     @Query("SELECT * FROM ${Bookmark.TABLE_NAME} ORDER BY ${Bookmark.CREATION_DATE} DESC")
     fun bookmarks(): Flow<List<Bookmark>>
 
-    @Query("SELECT * FROM ${Highlight.TABLE_NAME} ORDER BY ${Highlight.CREATION_DATE} DESC")
-    fun highlights(): Flow<List<Highlight>>
-
-    @Query("SELECT * FROM ${Highlight.TABLE_NAME}")
-    suspend fun allHighlights(): List<Highlight>
-
-    @Query("SELECT * FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.BOOK_ID} = :bookId ORDER BY ${Highlight.TOTAL_PROGRESSION} ASC")
-    fun highlightsForBook(bookId: Long): Flow<List<Highlight>>
-
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertBookmark(bookmark: Bookmark): Long
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertHighlight(highlight: Highlight): Long
-
-    @Query("UPDATE ${Highlight.TABLE_NAME} SET ${Highlight.ANNOTATION} = :annotation WHERE ${Highlight.ID} = :id")
-    suspend fun updateHighlightAnnotation(id: Long, annotation: String)
-
-    @Query("UPDATE ${Highlight.TABLE_NAME} SET ${Highlight.TINT} = :tint, ${Highlight.STYLE} = :style WHERE ${Highlight.ID} = :id")
-    suspend fun updateHighlightStyle(id: Long, style: Highlight.Style, @ColorInt tint: Int)
-
-    @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
-    suspend fun deleteHighlight(id: Long)
 }

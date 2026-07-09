@@ -8,6 +8,7 @@ import com.yura.app.data.Book
 import com.yura.app.data.YuraDao
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
 import java.security.MessageDigest
 import java.util.UUID
 import kotlin.time.Clock
@@ -80,8 +81,8 @@ class LibraryRepository(
         dao.deleteBookmarksForBook(book.id)
         dao.deleteBook(book.id)
         withContext(Dispatchers.IO) {
-            runCatching { book.url.toFile()?.delete() }
-            runCatching { File(book.cover).delete() }
+            runCatching { book.href.toOwnedLocalFile()?.delete() }
+            runCatching { book.cover.toOwnedLocalFile()?.delete() }
         }
     }
 
@@ -137,6 +138,20 @@ class LibraryRepository(
 
     private fun Metadata.authorName(): String =
         authors.firstOrNull()?.name.orEmpty()
+
+    private fun String.toOwnedLocalFile(): File? {
+        if (isBlank()) return null
+        val file = runCatching {
+            if (startsWith("file:", ignoreCase = true)) {
+                File(checkNotNull(URI(this).path))
+            } else {
+                File(this)
+            }
+        }.getOrNull() ?: return null
+        val appRoot = context.filesDir.canonicalFile
+        val target = file.canonicalFile
+        return target.takeIf { it.path.startsWith(appRoot.path) && it.exists() && it.isFile }
+    }
 
     private data class ImportedFile(
         val file: File,

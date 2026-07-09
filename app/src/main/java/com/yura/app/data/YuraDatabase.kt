@@ -4,16 +4,14 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Book::class, Bookmark::class, Highlight::class],
-    version = 2,
+    entities = [Book::class, Bookmark::class],
+    version = 3,
     exportSchema = false,
 )
-@TypeConverters(HighlightConverters::class)
 abstract class YuraDatabase : RoomDatabase() {
     abstract fun yuraDao(): YuraDao
 
@@ -29,6 +27,7 @@ abstract class YuraDatabase : RoomDatabase() {
                     "yura.db",
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }
@@ -41,6 +40,12 @@ abstract class YuraDatabase : RoomDatabase() {
                 db.execSQL(
                     "UPDATE ${Book.TABLE_NAME} SET ${Book.LAST_READ_DATE} = ${Book.CREATION_DATE} WHERE ${Book.LAST_READ_DATE} = 0"
                 )
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS highlights")
             }
         }
     }

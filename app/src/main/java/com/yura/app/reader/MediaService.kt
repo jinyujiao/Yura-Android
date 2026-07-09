@@ -167,6 +167,12 @@ class MediaService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         binder.currentTtsSession()
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (binder.currentTtsSession()?.player?.isPlaying != true) {
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
         binder.closeTtsSession()
         super.onDestroy()

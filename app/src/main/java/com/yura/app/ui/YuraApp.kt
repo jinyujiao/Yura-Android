@@ -92,6 +92,8 @@ import com.yura.app.sync.WebDavSettings
 import com.yura.app.sync.WebDavSettingsStore
 import com.yura.app.sync.WebDavSyncRepository
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -538,7 +540,7 @@ private fun BookCard(
                         .size(32.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("脳", fontWeight = FontWeight.Black)
+                        Text("\u00d7", fontWeight = FontWeight.Black)
                     }
                 }
             }
@@ -585,7 +587,7 @@ private fun SettingsHubScreen(
 
     when (detail) {
         null -> SettingsHome(onOpen = { detail = it })
-        SettingsDetail.Tts -> SettingsDetailScaffold("TTS \u6717\u8bfb", onBack = { detail = null }) {
+        SettingsDetail.Tts -> SettingsDetailScaffold("\u6717\u8bfb\u8bbe\u7f6e", onBack = { detail = null }) {
             CleanTtsSettingsPage(ttsController)
         }
         SettingsDetail.Reading -> SettingsDetailScaffold("\u9605\u8bfb\u8bbe\u7f6e", onBack = { detail = null }) {
@@ -607,7 +609,7 @@ private fun SettingsHubScreen(
             WebDavSettingsPage()
         }
         SettingsDetail.About -> SettingsDetailScaffold("\u5173\u4e8e", onBack = { detail = null }) {
-            SettingsInfoCard("Yura\n\u4e00\u4e2a\u4e13\u6ce8 EPUB \u9605\u8bfb\u3001\u7b14\u8bb0\u548c\u6717\u8bfb\u7684\u5c0f\u5e94\u7528\u3002")
+            SettingsInfoCard("Yura\n\u4e00\u4e2a\u4e13\u6ce8 EPUB \u9605\u8bfb\u548c\u6717\u8bfb\u7684\u5c0f\u5e94\u7528\u3002")
         }
     }
 }
@@ -620,7 +622,7 @@ private fun SettingsHome(onOpen: (SettingsDetail) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SettingsEntryRow("TTS \u6717\u8bfb", "\u4e91\u7aef\u8bed\u97f3\u3001\u97f3\u8272\u3001API Key \u548c\u6d4b\u8bd5\u6717\u8bfb", "\u266a") {
+            SettingsEntryRow("\u6717\u8bfb\u8bbe\u7f6e", "\u4e91\u7aef\u8bed\u97f3\u3001\u97f3\u8272\u3001API Key \u548c\u6d4b\u8bd5\u6717\u8bfb", "\u266a") {
                 onOpen(SettingsDetail.Tts)
             }
         }
@@ -630,7 +632,7 @@ private fun SettingsHome(onOpen: (SettingsDetail) -> Unit) {
             }
         }
         item {
-            SettingsEntryRow("WebDAV", "\u540c\u6b65\u4e66\u7c4d\u3001\u9605\u8bfb\u8fdb\u5ea6\u548c\u7b14\u8bb0\u6807\u6ce8", "\u21c4") {
+            SettingsEntryRow("WebDAV", "\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6", "\u21c4") {
                 onOpen(SettingsDetail.WebDav)
             }
         }
@@ -855,7 +857,7 @@ private fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 when (uiState.provider) {
                     SimpleTtsController.Provider.SYSTEM -> {
-                        SettingTextRow("\u7cfb\u7edf TTS", uiState.engineName.ifBlank { "\u7cfb\u7edf\u9ed8\u8ba4\u6717\u8bfb\u5f15\u64ce" })
+                        SettingTextRow("\u7cfb\u7edf\u6717\u8bfb", uiState.engineName.ifBlank { "\u7cfb\u7edf\u9ed8\u8ba4\u6717\u8bfb\u5f15\u64ce" })
                     }
                     SimpleTtsController.Provider.MIMO -> {
                         SettingDropdownRow(
@@ -999,6 +1001,7 @@ private fun WebDavSettingsPage() {
     var testOk by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
     var syncOk by remember { mutableStateOf(false) }
+    var lastSyncAt by remember { mutableStateOf(WebDavSettingsStore.lastSyncAt(context)) }
 
     fun update(updated: WebDavSettings) {
         settings = updated
@@ -1031,6 +1034,10 @@ private fun WebDavSettingsPage() {
                                     val result = WebDavSyncRepository(context).sync()
                                     syncing = false
                                     syncOk = result.isSuccess
+                                    if (result.isSuccess) {
+                                        lastSyncAt = System.currentTimeMillis()
+                                        WebDavSettingsStore.saveLastSyncAt(context, lastSyncAt)
+                                    }
                                     syncMessage = result.fold(
                                         onSuccess = {
                                             "\u540c\u6b65\u5b8c\u6210\uff1a\u4e0a\u4f20\u4e66\u7c4d ${it.uploadedBooks}\uff0c\u4e0b\u8f7d\u4e66\u7c4d ${it.downloadedBooks}\uff0c\u8fdb\u5ea6\u5408\u5e76 ${it.mergedProgress}"
@@ -1043,7 +1050,7 @@ private fun WebDavSettingsPage() {
                             Text(if (syncing) "\u540c\u6b65\u4e2d" else "\u7acb\u5373\u540c\u6b65")
                         }
                         Text(
-                            text = syncMessage ?: "\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u3001\u9605\u8bfb\u8fdb\u5ea6\u548c\u7b14\u8bb0\u6807\u6ce8\uff0c\u4e0d\u4f1a\u5220\u9664\u672c\u5730\u6570\u636e\u3002",
+                            text = syncMessage ?: "\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6\uff0c\u4e0d\u4f1a\u5220\u9664\u672c\u5730\u6570\u636e\u3002",
                             color = when {
                                 syncMessage == null -> MaterialTheme.colorScheme.onSurfaceVariant
                                 syncOk -> MaterialTheme.colorScheme.primary
@@ -1053,6 +1060,15 @@ private fun WebDavSettingsPage() {
                             modifier = Modifier.weight(1f),
                         )
                     }
+                    Text(
+                        text = if (lastSyncAt > 0L) {
+                            "\u4e0a\u6b21\u540c\u6b65\uff1a${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(lastSyncAt))}"
+                        } else {
+                            "\u8fd8\u6ca1\u6709\u6210\u529f\u540c\u6b65\u8fc7"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
@@ -1060,7 +1076,7 @@ private fun WebDavSettingsPage() {
             SettingsGroup(title = "\u540c\u6b65\u670d\u52a1") {
                 AppPreferenceSwitch(
                     title = "\u542f\u7528 WebDAV",
-                    subtitle = "\u5f00\u542f\u540e\u53ef\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u3001\u9605\u8bfb\u8fdb\u5ea6\u548c\u7b14\u8bb0\u6807\u6ce8",
+                    subtitle = "\u5f00\u542f\u540e\u53ef\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6",
                     checked = settings.enabled,
                     onCheckedChange = { update(settings.copy(enabled = it)) },
                 )

@@ -391,12 +391,19 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
-    private fun cleanTtsTextForSync(text: String): String =
-        text
-            .replace(Regex("[.。…·•_\\-~]{2,}"), " ")
+    private fun cleanTtsTextForSync(text: String): String {
+        val cleaned = text
+            .replace(Regex("[“”\"‘’']\\s*(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}[“”\"‘’']"), " ")
+            .replace(Regex("(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}"), " ")
+            .replace(Regex("[—–-]{2,}"), " ")
+            .replace(Regex("[~～_＿=＝*＊#＃]{2,}"), " ")
+            .replace(Regex("[“”\"‘’']\\s+[“”\"‘’']"), " ")
+            .replace(Regex("([。！？!?，,、；;：:])\\1+"), "$1")
             .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
+        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
+    }
 
     private fun startTtsFromTaggedPage(startParagraphOverride: Int? = null) {
         if (activeTtsReadingOrderIndex < 0) {
@@ -419,11 +426,17 @@ class ReaderActivity : FragmentActivity() {
                     document.head.appendChild(s);
                 }
                 function cleanTtsText(text) {
-                    return (text || '')
-                        .replace(/[.。…·•_\-~]{2,}/g, ' ')
+                    var cleaned = (text || '')
+                        .replace(/[“”"'‘’]\s*(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}[“”"'‘’]/g, ' ')
+                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, ' ')
+                        .replace(/[—–-]{2,}/g, ' ')
+                        .replace(/[~～_＿=＝*＊#＃]{2,}/g, ' ')
+                        .replace(/[“”"'‘’]\s+[“”"'‘’]/g, ' ')
+                        .replace(/([。！？!?，,、；;：:])\1+/g, '$1')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();
+                    return /[0-9A-Za-z\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(cleaned) ? cleaned : '';
                 }
                 function visibleRect(element) {
                     var rects = element.getClientRects();
@@ -611,11 +624,17 @@ class ReaderActivity : FragmentActivity() {
                     document.head.appendChild(s);
                 }
                 function cleanTtsText(text) {
-                    return (text || '')
-                        .replace(/[.。…·•_\-~]{2,}/g, ' ')
+                    var cleaned = (text || '')
+                        .replace(/[“”"'‘’]\s*(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}[“”"'‘’]/g, ' ')
+                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, ' ')
+                        .replace(/[—–-]{2,}/g, ' ')
+                        .replace(/[~～_＿=＝*＊#＃]{2,}/g, ' ')
+                        .replace(/[“”"'‘’]\s+[“”"'‘’]/g, ' ')
+                        .replace(/([。！？!?，,、；;：:])\1+/g, '$1')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();
+                    return /[0-9A-Za-z\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(cleaned) ? cleaned : '';
                 }
                 var nodes = Array.prototype.slice.call(
                     document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote')

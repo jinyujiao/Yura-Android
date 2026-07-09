@@ -18,6 +18,7 @@ object WebDavSettingsStore {
     private const val KEY_USERNAME = "username"
     private const val KEY_PASSWORD = "password"
     private const val KEY_REMOTE_PATH = "remote_path"
+    private const val KEY_LAST_SYNC_AT = "last_sync_at"
 
     fun load(context: Context): WebDavSettings {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -37,6 +38,16 @@ object WebDavSettingsStore {
             putString(KEY_USERNAME, settings.username.trim())
             putString(KEY_PASSWORD, settings.password)
             putString(KEY_REMOTE_PATH, settings.remotePath.trim().ifBlank { "/Yura" })
+        }
+    }
+
+    fun lastSyncAt(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_LAST_SYNC_AT, 0L)
+
+    fun saveLastSyncAt(context: Context, timestamp: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+            putLong(KEY_LAST_SYNC_AT, timestamp)
         }
     }
 }

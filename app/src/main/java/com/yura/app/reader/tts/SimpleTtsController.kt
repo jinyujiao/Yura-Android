@@ -49,9 +49,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     enum class Provider(val label: String) {
-        SYSTEM("System"),
-        MIMO("MiMo"),
-        MICROSOFT("Microsoft"),
+        SYSTEM("\u7cfb\u7edf\u6717\u8bfb"),
+        MIMO("MiMo \u6717\u8bfb"),
+        MICROSOFT("Microsoft \u6717\u8bfb"),
     }
 
     data class MicrosoftVoice(
@@ -235,11 +235,11 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
-                    fail("System TTS failed to speak this sentence.")
+                    fail("\u7cfb\u7edf\u6717\u8bfb\u65e0\u6cd5\u64ad\u653e\u8fd9\u4e00\u53e5\u3002")
                 }
 
                 override fun onError(utteranceId: String?, errorCode: Int) {
-                    fail("System TTS failed with code $errorCode.")
+                    fail("\u7cfb\u7edf\u6717\u8bfb\u5931\u8d25\uff08$errorCode\uff09\u3002")
                 }
             }
         )
@@ -252,8 +252,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             _state.update {
                 it.copy(
                     state = State.IDLE,
-                    engineName = "System TTS unavailable",
-                    errorMessage = if (it.provider == Provider.SYSTEM) "System TTS is not available." else null,
+                    engineName = "\u7cfb\u7edf\u6717\u8bfb\u4e0d\u53ef\u7528",
+                    errorMessage = if (it.provider == Provider.SYSTEM) "\u7cfb\u7edf\u6717\u8bfb\u4e0d\u53ef\u7528\u3002" else null,
                 )
             }
             pendingParagraphIndex?.takeIf { _state.value.provider != Provider.SYSTEM }?.let { startParagraph ->
@@ -274,7 +274,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                     state = State.IDLE,
                     engineName = displayEngineName(),
                     errorMessage = if (it.provider == Provider.SYSTEM) {
-                        "System TTS does not support ${locale.displayLanguage}."
+                        "\u7cfb\u7edf\u6717\u8bfb\u4e0d\u652f\u6301 ${locale.displayLanguage}\u3002"
                     } else {
                         null
                     },
@@ -671,16 +671,19 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         return limit
     }
 
-    private fun cleanTextForSpeech(text: String): String =
-        text
+    private fun cleanTextForSpeech(text: String): String {
+        val cleaned = text
             .replace(Regex("[“”\"‘’']\\s*(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}[“”\"‘’']"), " ")
             .replace(Regex("(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}"), " ")
             .replace(Regex("[—–-]{2,}"), " ")
             .replace(Regex("[~～_＿=＝*＊#＃]{2,}"), " ")
+            .replace(Regex("[“”\"‘’']\\s+[“”\"‘’']"), " ")
             .replace(Regex("([。！？!?，,、；;：:])\\1+"), "$1")
             .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
+        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
+    }
 
     private fun ensureMediaControls() {
         if (mediaServiceBound) {
@@ -732,7 +735,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         Log.d(TAG, "playFromSentence index=$sentenceIndex provider=${_state.value.provider} initialized=$initialized items=${speechItems.size}")
         if (speechItems.isEmpty()) return
         if (_state.value.provider == Provider.SYSTEM && !initialized) {
-            fail("System TTS is not available.")
+            fail("\u7cfb\u7edf\u6717\u8bfb\u4e0d\u53ef\u7528\u3002")
             return
         }
 
@@ -800,7 +803,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 if (initialized) {
                     synthesizeSystem(item, file)
                 } else {
-                    fail("System TTS is not available.")
+                    fail("\u7cfb\u7edf\u6717\u8bfb\u4e0d\u53ef\u7528\u3002")
                 }
             }
             Provider.MIMO -> synthesizeCloud(sentenceIndex, file) {
@@ -818,7 +821,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val result = tts.synthesizeToFile(item.text, Bundle(), file, utteranceId)
         Log.d(TAG, "synthesizeSystem utterance=$utteranceId result=$result textLength=${item.text.length} file=${file.absolutePath}")
         if (result == TextToSpeech.ERROR) {
-            fail("System TTS could not start synthesis.")
+            fail("\u7cfb\u7edf\u6717\u8bfb\u65e0\u6cd5\u5f00\u59cb\u751f\u6210\u97f3\u9891\u3002")
         }
     }
 
@@ -841,7 +844,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 }
                 .onFailure { error ->
                     Log.e(TAG, "synthesizeCloud failed sentence=$sentenceIndex", error)
-                    fail(error.message ?: "Cloud TTS failed.")
+                    fail(error.message ?: "\u4e91\u7aef\u6717\u8bfb\u5931\u8d25\u3002")
                 }
         }
     }
@@ -883,7 +886,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             ?.optJSONObject("audio")
             ?.optString("data")
             .orEmpty()
-        require(audioBase64.isNotBlank()) { "MiMo TTS did not return audio data." }
+        require(audioBase64.isNotBlank()) { "MiMo \u6ca1\u6709\u8fd4\u56de\u97f3\u9891\u6570\u636e\u3002" }
         file.writeBytes(Base64.getDecoder().decode(audioBase64))
     }
 
@@ -912,7 +915,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         connection.outputStream.use { it.write(ssml.toByteArray(Charsets.UTF_8)) }
         if (connection.responseCode !in 200..299) {
             val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("Microsoft TTS failed (${connection.responseCode}). $message")
+            throw IllegalStateException("Microsoft \u6717\u8bfb\u5931\u8d25\uff08${connection.responseCode}\uff09\u3002$message")
         }
         connection.inputStream.use { input ->
             file.outputStream().use { output -> input.copyTo(output) }
@@ -966,7 +969,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val file = audioFile(sentenceIndex)
         Log.d(TAG, "playSynthesizedFile index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
         if (!file.exists() || file.length() == 0L) {
-            fail("${_state.value.provider.label} TTS produced an empty audio stream.")
+            fail("${_state.value.provider.label}\u751f\u6210\u4e86\u7a7a\u97f3\u9891\u3002")
             return
         }
 
@@ -1285,7 +1288,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             connection.inputStream.bufferedReader().use { it.readText() }
         } else {
             val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("MiMo TTS failed (${connection.responseCode}). ${message.ifBlank { "No error body." }}")
+            throw IllegalStateException("MiMo \u6717\u8bfb\u5931\u8d25\uff08${connection.responseCode}\uff09\u3002${message.ifBlank { "\u6ca1\u6709\u9519\u8bef\u8be6\u60c5\u3002" }}")
         }
         return JSONObject(responseText)
     }
