@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -150,6 +151,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var mediaSubtitle = ""
     private var mediaArtworkUri: Uri? = null
     private var mediaArtworkData: ByteArray? = null
+    private var playbackWakeLock: PowerManager.WakeLock? = null
 
     var onParagraphChanged: ((Int) -> Unit)? = null
     var onQueueEnded: (() -> Unit)? = null
@@ -538,6 +540,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun stop() {
         Log.d(TAG, "stop")
+        releasePlaybackWakeLock()
         generation++
         pendingParagraphIndex = null
         activeParagraphIndex = -1
@@ -995,6 +998,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         player.prepare()
         player.play()
         markSentencePlaying(sentenceIndex, durationMs = audioDurationMs(file))
+        releasePlaybackWakeLock()
         prefetchCloudSentences(sentenceIndex + 1)
     }
 
@@ -1258,6 +1262,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private fun fail(message: String) {
         Log.e(TAG, "fail: $message")
         mainHandler.post {
+            releasePlaybackWakeLock()
             tts.stop()
             player.stop()
             pendingParagraphIndex = null
@@ -1270,6 +1275,35 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                     errorMessage = message,
                     engineName = displayEngineName(),
                 )
+            }
+        }
+    }
+
+    fun holdPlaybackWakeLock(timeoutMs: Long = BACKGROUND_CONTINUATION_WAKE_LOCK_MS) {
+        val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+        val wakeLock = playbackWakeLock ?: powerManager
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:background-continuation")
+            .also {
+                it.setReferenceCounted(false)
+                playbackWakeLock = it
+            }
+        runCatching {
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
+            wakeLock.acquire(timeoutMs)
+            Log.d(TAG, "holdPlaybackWakeLock timeoutMs=$timeoutMs")
+        }.onFailure {
+            Log.w(TAG, "holdPlaybackWakeLock failed: ${it.message}")
+        }
+    }
+
+    private fun releasePlaybackWakeLock() {
+        val wakeLock = playbackWakeLock ?: return
+        runCatching {
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+                Log.d(TAG, "releasePlaybackWakeLock")
             }
         }
     }
@@ -1378,6 +1412,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         private const val MIN_TTS_CHUNK_CHARS = 70
         private const val PREFETCH_AHEAD_COUNT = 2
         private const val SPEECH_VOLUME_GAIN = 1.6f
+        private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 2 * 60 * 1000L
         private const val TAG = "YuraTts"
     }
 }

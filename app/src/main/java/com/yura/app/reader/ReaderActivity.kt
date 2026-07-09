@@ -726,6 +726,7 @@ class ReaderActivity : FragmentActivity() {
         activeTtsReadingOrderIndex = nextIndex
         currentTtsWebView = null
         currentTtsDomIndexByParagraph = emptyList()
+        ttsController.holdPlaybackWakeLock()
         lifecycleScope.launch {
             val paragraphs = withContext(Dispatchers.IO) {
                 extractTtsParagraphsFromResource(publication, link)
@@ -745,14 +746,23 @@ class ReaderActivity : FragmentActivity() {
         } finally {
             resource.close()
         }
-        val html = bytes.toString(Charsets.UTF_8)
-        val document = Jsoup.parse(html)
+        if (bytes.isEmpty()) return emptyList()
+        val html = runCatching { bytes.toString(Charsets.UTF_8) }
+            .getOrDefault(bytes.toString(Charsets.ISO_8859_1))
+        val document = Jsoup.parse(html, link.href.toString())
+        document.select("script, style, nav[epub|type=toc], nav, aside, audio, video").remove()
         val nodes = document.select("p, h1, h2, h3, h4, h5, h6, li, blockquote")
         val paragraphs = nodes
             .map { cleanTtsTextForSync(it.text()) }
             .filter { it.length >= 2 }
+        val fallbackText = document.body()?.text()?.takeIf { it.isNotBlank() }
+            ?: html.replace(Regex("<[^>]+>"), " ")
+        val fallback = fallbackText
+            .split(Regex("(?<=[。！？!?])\\s*|\\n+"))
+            .map { cleanTtsTextForSync(it) }
+            .filter { it.length >= 2 }
         return paragraphs.ifEmpty {
-            listOf(cleanTtsTextForSync(document.body().text()))
+            fallback.ifEmpty { listOf(cleanTtsTextForSync(fallbackText)) }
                 .filter { it.length >= 2 }
         }
     }

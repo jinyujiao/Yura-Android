@@ -5,12 +5,6 @@ package com.yura.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -101,7 +95,6 @@ import com.yura.app.sync.WebDavSyncRepository
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -123,20 +116,12 @@ fun YuraApp() {
     val libraryState by libraryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
-    val scope = rememberCoroutineScope()
-    var launchVisible by remember { mutableStateOf(true) }
-    var openingBook by remember { mutableStateOf<Book?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
             libraryViewModel.importPublication(uri)
         }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(900)
-        launchVisible = false
     }
 
     LaunchedEffect(libraryState.message) {
@@ -212,14 +197,7 @@ fun YuraApp() {
                         RootTab.Library -> LibraryScreen(
                             state = libraryState,
                             onOpenReader = { book ->
-                                if (openingBook == null) {
-                                    openingBook = book
-                                    scope.launch {
-                                        delay(420)
-                                        context.startActivity(ReaderActivity.intent(context, book.id))
-                                        openingBook = null
-                                    }
-                                }
+                                context.startActivity(ReaderActivity.intent(context, book.id))
                             },
                             onDeleteBook = libraryViewModel::deleteBook,
                         )
@@ -239,140 +217,6 @@ fun YuraApp() {
                     .navigationBarsPadding()
                     .padding(bottom = 8.dp),
             )
-        }
-    }
-    BookOpeningOverlay(book = openingBook)
-    AppLaunchOverlay(visible = launchVisible)
-}
-
-@Composable
-private fun AppLaunchOverlay(visible: Boolean) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(animationSpec = tween(160)),
-        exit = fadeOut(animationSpec = tween(360)),
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(30f),
-    ) {
-        val markScale by animateFloatAsState(
-            targetValue = if (visible) 1f else 0.96f,
-            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-            label = "launch-mark-scale",
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-                modifier = Modifier.graphicsLayer {
-                    scaleX = markScale
-                    scaleY = markScale
-                },
-            ) {
-                ReaderGlyph(size = 76)
-                Text(
-                    text = "Yura",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookOpeningOverlay(book: Book?) {
-    AnimatedVisibility(
-        visible = book != null,
-        enter = fadeIn(animationSpec = tween(120)),
-        exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(20f),
-    ) {
-        val coverScale by animateFloatAsState(
-            targetValue = if (book != null) 1f else 0.86f,
-            animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
-            label = "opening-book-scale",
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-                modifier = Modifier.graphicsLayer {
-                    scaleX = coverScale
-                    scaleY = coverScale
-                },
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 10.dp,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier
-                        .width(148.dp)
-                        .aspectRatio(0.68f),
-                ) {
-                    if (book != null) {
-                        AsyncImage(
-                            model = File(book.cover),
-                            contentDescription = book.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(18.dp)),
-                        )
-                    }
-                }
-                Text(
-                    text = "正在打开",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReaderGlyph(size: Int) {
-    Box(
-        modifier = Modifier
-            .size(size.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.primary),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f),
-                shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp, topEnd = 3.dp, bottomEnd = 3.dp),
-                modifier = Modifier
-                    .width((size * 0.22f).dp)
-                    .height((size * 0.52f).dp),
-            ) {}
-            Surface(
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.68f),
-                shape = RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 10.dp, bottomEnd = 10.dp),
-                modifier = Modifier
-                    .width((size * 0.22f).dp)
-                    .height((size * 0.52f).dp),
-            ) {}
         }
     }
 }
