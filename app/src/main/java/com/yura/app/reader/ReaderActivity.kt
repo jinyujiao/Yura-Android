@@ -164,8 +164,8 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
+    override fun onResume() {
+        super.onResume()
         readerForeground = true
         pendingForegroundTtsLocator?.let { locator ->
             pendingForegroundTtsLocator = null
@@ -174,9 +174,9 @@ class ReaderActivity : FragmentActivity() {
         } ?: scheduleForegroundTtsSync(300)
     }
 
-    override fun onStop() {
+    override fun onPause() {
         readerForeground = false
-        super.onStop()
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -734,7 +734,7 @@ class ReaderActivity : FragmentActivity() {
             if (paragraphs.isEmpty()) {
                 continueTtsToNextChapter()
             } else {
-                ttsController.speak(paragraphs, 0)
+                ttsController.speakContinuing(paragraphs, 0)
             }
         }
     }

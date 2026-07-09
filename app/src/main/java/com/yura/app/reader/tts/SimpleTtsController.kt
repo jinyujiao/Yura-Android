@@ -426,14 +426,33 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun speak(items: List<String>, startParagraphIndex: Int = 0) {
-        Log.d(TAG, "speak provider=${_state.value.provider} items=${items.size} start=$startParagraphIndex initialized=$initialized")
+        speakInternal(items, startParagraphIndex, keepPlaybackSession = false)
+    }
+
+    fun speakContinuing(items: List<String>, startParagraphIndex: Int = 0) {
+        speakInternal(items, startParagraphIndex, keepPlaybackSession = true)
+    }
+
+    private fun speakInternal(
+        items: List<String>,
+        startParagraphIndex: Int,
+        keepPlaybackSession: Boolean,
+    ) {
+        Log.d(
+            TAG,
+            "speak provider=${_state.value.provider} items=${items.size} start=$startParagraphIndex keepSession=$keepPlaybackSession initialized=$initialized"
+        )
         testPlayback = false
         generation++
         stopping = false
-        player.stop()
-        tts.stop()
+        if (!keepPlaybackSession) {
+            player.stop()
+            tts.stop()
+        }
         cleanAudioFiles()
-        ensureMediaControls()
+        if (!keepPlaybackSession) {
+            ensureMediaControls()
+        }
 
         paragraphs.clear()
         paragraphs.addAll(items.map { cleanTextForSpeech(it) }.filter { it.isNotBlank() })
@@ -467,7 +486,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             stop()
         } else if (canStartCurrentProvider()) {
             Log.d(TAG, "speak start paragraph=$safeParagraph speechItems=${speechItems.size}")
-            playFromParagraph(safeParagraph)
+            playFromParagraph(safeParagraph, resetPlayer = !keepPlaybackSession)
         } else {
             Log.d(TAG, "speak pending paragraph=$safeParagraph provider=${_state.value.provider}")
             pendingParagraphIndex = safeParagraph
@@ -729,13 +748,16 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         mediaServiceConnecting = false
     }
 
-    private fun playFromParagraph(paragraphIndex: Int) {
+    private fun playFromParagraph(paragraphIndex: Int, resetPlayer: Boolean = true) {
         val item = speechItems.firstOrNull { it.paragraphIndex >= paragraphIndex } ?: return
-        playFromSentence(item.sentenceGlobalIndex)
+        playFromSentence(item.sentenceGlobalIndex, resetPlayer = resetPlayer)
     }
 
-    private fun playFromSentence(sentenceIndex: Int) {
-        Log.d(TAG, "playFromSentence index=$sentenceIndex provider=${_state.value.provider} initialized=$initialized items=${speechItems.size}")
+    private fun playFromSentence(sentenceIndex: Int, resetPlayer: Boolean = true) {
+        Log.d(
+            TAG,
+            "playFromSentence index=$sentenceIndex resetPlayer=$resetPlayer provider=${_state.value.provider} initialized=$initialized items=${speechItems.size}"
+        )
         if (speechItems.isEmpty()) return
         if (_state.value.provider == Provider.SYSTEM && !initialized) {
             fail("\u7cfb\u7edf\u6717\u8bfb\u4e0d\u53ef\u7528\u3002")
@@ -745,9 +767,11 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val safeIndex = sentenceIndex.coerceIn(0, speechItems.lastIndex)
         generation++
         stopping = false
-        tts.stop()
-        player.stop()
-        player.clearMediaItems()
+        if (resetPlayer) {
+            tts.stop()
+            player.stop()
+            player.clearMediaItems()
+        }
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
@@ -841,7 +865,11 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                     Log.d(TAG, "synthesizeCloud success sentence=$sentenceIndex file=${file.length()}")
                     mainHandler.post {
                         if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping) {
-                            playSynthesizedFile(sentenceIndex)
+                            if (file.exists() && file.length() > 0L) {
+                                playSynthesizedFile(sentenceIndex)
+                            } else {
+                                fail("${_state.value.provider.label}\u751f\u6210\u4e86\u7a7a\u97f3\u9891\u3002")
+                            }
                         }
                     }
                 }
