@@ -38,6 +38,9 @@ interface YuraDao {
     @Query("UPDATE ${Book.TABLE_NAME} SET ${Book.LAST_READ_DATE} = :lastReadDate WHERE ${Book.ID} = :id")
     suspend fun markBookRead(id: Long, lastReadDate: Long)
 
+    @Query("UPDATE ${Book.TABLE_NAME} SET ${Book.COVER} = :cover WHERE ${Book.ID} = :id")
+    suspend fun updateBookCover(id: Long, cover: String)
+
     @Query("SELECT * FROM ${Bookmark.TABLE_NAME} ORDER BY ${Bookmark.CREATION_DATE} DESC")
     fun bookmarks(): Flow<List<Bookmark>>
 

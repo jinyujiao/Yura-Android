@@ -32,7 +32,21 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             runCatching {
                 val importedFile = copyToLibrary(uri)
-                val publicationFile = importedFile.file
+                val sourceDisplayName = displayName(uri)
+                var txtAuthor = ""
+                val publicationFile = if (isTxtPublication(uri, importedFile.file, sourceDisplayName)) {
+                    val converted = TxtEpubConverter.convert(
+                        txtFile = importedFile.file,
+                        outputDir = File(context.filesDir, "books"),
+                        title = sourceDisplayName?.substringBeforeLast('.') ?: importedFile.file.nameWithoutExtension,
+                        identifier = "yura-txt-${importedFile.sha256}",
+                    )
+                    txtAuthor = converted.author
+                    importedFile.file.delete()
+                    converted.file
+                } else {
+                    importedFile.file
+                }
                 val asset = readium.assetRetriever.retrieve(publicationFile.toUrl(isDirectory = false))
                     .getOrElse { error("无法识别这个文件：${it.message}") }
                 val publication = readium.publicationOpener.open(
@@ -45,8 +59,8 @@ class LibraryRepository(
                         ?.trim()
                         ?.takeIf { it.isNotBlank() }
                         ?: importedFile.sha256
-                    val title = publication.metadata.title ?: displayName(uri) ?: publicationFile.nameWithoutExtension
-                    val author = publication.metadata.authorName()
+                    val title = publication.metadata.title ?: sourceDisplayName ?: publicationFile.nameWithoutExtension
+                    val author = txtAuthor.ifBlank { publication.metadata.authorName() }
                     val duplicate = dao.bookByIdentifier(duplicateIdentifier)
                         ?: dao.bookByTitleAndAuthor(title, author)
                     duplicate?.let {
@@ -86,6 +100,16 @@ class LibraryRepository(
         }
     }
 
+    suspend fun changeCover(book: Book, uri: Uri): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val coverFile = copyCoverToLibrary(uri)
+                dao.updateBookCover(book.id, coverFile.absolutePath)
+                runCatching { book.cover.toOwnedLocalFile()?.delete() }
+                Unit
+            }
+        }
+
     private suspend fun copyToLibrary(uri: Uri): ImportedFile =
         withContext(Dispatchers.IO) {
             val dir = File(context.filesDir, "books").apply { mkdirs() }
@@ -123,12 +147,40 @@ class LibraryRepository(
             file
         }
 
+    private fun copyCoverToLibrary(uri: Uri): File {
+        val dir = File(context.filesDir, "covers").apply { mkdirs() }
+        val extension = displayName(uri)
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase()
+            ?.takeIf { it in setOf("jpg", "jpeg", "png", "webp") }
+            ?: "jpg"
+        val file = File(dir, "${UUID.randomUUID()}.$extension")
+        context.contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "无法读取所选封面" }
+            file.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        return file
+    }
+
     private fun displayName(uri: Uri): String? =
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             }
             ?: uri.lastPathSegment
+
+    private fun isTxtPublication(uri: Uri, file: File, displayName: String?): Boolean {
+        val extension = (displayName ?: file.name)
+            .substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase()
+        val mimeType = context.contentResolver.getType(uri)?.lowercase().orEmpty()
+        return extension == "txt" ||
+            mimeType == "text/plain" ||
+            mimeType == "application/txt" ||
+            mimeType == "text/*"
+    }
 
     private fun Bitmap.resizeToWidth(width: Int): Bitmap {
         if (this.width <= width) return this

@@ -47,6 +47,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Slider
@@ -116,11 +117,21 @@ fun YuraApp() {
     val libraryState by libraryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
+    var coverTargetBook by remember { mutableStateOf<Book?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
             libraryViewModel.importPublication(uri)
+        }
+    }
+    val coverLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val book = coverTargetBook
+        coverTargetBook = null
+        if (uri != null && book != null) {
+            libraryViewModel.changeCover(book, uri)
         }
     }
 
@@ -138,7 +149,16 @@ fun YuraApp() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0.dp),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 22.dp, vertical = 88.dp),
+            ) { data ->
+                YuraSnackbar(data)
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -156,6 +176,7 @@ fun YuraApp() {
                                 importLauncher.launch(
                                     arrayOf(
                                         "application/epub+zip",
+                                        "text/plain",
                                         "application/octet-stream",
                                         "application/zip",
                                     ),
@@ -201,6 +222,10 @@ fun YuraApp() {
                                 context.startActivity(ReaderActivity.intent(context, book.id))
                             },
                             onDeleteBook = libraryViewModel::deleteBook,
+                            onChangeCover = { book ->
+                                coverTargetBook = book
+                                coverLauncher.launch(arrayOf("image/*"))
+                            },
                         )
                         RootTab.Settings -> SettingsHubScreen(
                             ttsController = ttsController,
@@ -304,10 +329,67 @@ private fun FloatingPillNavigation(
 }
 
 @Composable
+private fun YuraSnackbar(data: SnackbarData) {
+    val message = data.visuals.message
+    val isError = remember(message) {
+        listOf("失败", "无法", "错误", "异常").any { message.contains(it) }
+    }
+    val containerColor = if (isError) {
+        MaterialTheme.colorScheme.tertiaryContainer
+    } else {
+        MaterialTheme.colorScheme.primaryContainer
+    }
+    val contentColor = if (isError) {
+        MaterialTheme.colorScheme.onTertiaryContainer
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = contentColor.copy(alpha = 0.12f),
+                contentColor = contentColor,
+                modifier = Modifier.size(28.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (isError) "!" else "\u2713",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun LibraryScreen(
     state: LibraryUiState,
     onOpenReader: (Book) -> Unit,
     onDeleteBook: (Book) -> Unit,
+    onChangeCover: (Book) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -364,6 +446,7 @@ private fun LibraryScreen(
                 book = book,
                 onClick = { onOpenReader(book) },
                 onDelete = { onDeleteBook(book) },
+                onChangeCover = { onChangeCover(book) },
             )
         }
     }
@@ -401,10 +484,45 @@ private fun ShelfBookCard(
     book: Book,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onChangeCover: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
+    var actionMenuVisible by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
     val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
+
+    if (actionMenuVisible) {
+        AlertDialog(
+            onDismissRequest = { actionMenuVisible = false },
+            title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            text = { Text("选择要对这本书执行的操作") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        actionMenuVisible = false
+                        onChangeCover()
+                    },
+                ) {
+                    Text("更换封面")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { actionMenuVisible = false }) {
+                        Text("取消")
+                    }
+                    TextButton(
+                        onClick = {
+                            actionMenuVisible = false
+                            confirmDelete = true
+                        },
+                    ) {
+                        Text("删除")
+                    }
+                }
+            },
+        )
+    }
 
     if (confirmDelete) {
         AlertDialog(
@@ -438,7 +556,7 @@ private fun ShelfBookCard(
             }
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { confirmDelete = true },
+                onLongClick = { actionMenuVisible = true },
             ),
     ) {
         Surface(

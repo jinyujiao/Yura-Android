@@ -58,6 +58,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun changeCover(book: Book, uri: Uri) {
+        viewModelScope.launch {
+            val result = repository.changeCover(book, uri)
+            transientState.value = transientState.value.copy(
+                message = result.fold(
+                    onSuccess = { "封面已更新" },
+                    onFailure = { it.message ?: "封面更新失败" },
+                ),
+            )
+        }
+    }
+
     fun clearMessage() {
         transientState.value = transientState.value.copy(message = null)
     }
