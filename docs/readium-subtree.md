@@ -6,7 +6,9 @@ The `readium/` directory is managed as a Git subtree from:
 https://github.com/readium/kotlin-toolkit.git
 ```
 
-The local baseline branch for the current vendored copy is:
+Upstream keeps the toolkit modules under its own `readium/` subdirectory. The update script fetches upstream, creates a lightweight synthetic split from `FETCH_HEAD:readium`, then pulls that split into this repository's local `readium/` prefix.
+
+The local baseline branch for the original vendored copy is:
 
 ```text
 readium-baseline
