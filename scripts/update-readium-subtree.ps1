@@ -31,17 +31,33 @@ $env:GIT_HTTP_LOW_SPEED_TIME = "20"
 
 Invoke-Git -c http.version=HTTP/1.1 fetch $Remote $Branch
 
-$hasSubtreeMetadata = git log --grep="git-subtree-dir: readium" --format="%H" -1
-if (-not $hasSubtreeMetadata) {
-    throw @"
-Readium was fetched, but the existing readium/ directory was not originally added with git subtree.
-This repository needs a one-time adoption/replacement step before normal subtree pulls can work.
-
-Reason: upstream readium/kotlin-toolkit stores the modules under its own readium/ subdirectory,
-while this repository already has that subdirectory copied into local readium/.
-"@
+$lastSubtreeCommit = git log --grep="git-subtree-dir: readium" --format="%H" -1
+if (-not $lastSubtreeCommit) {
+    throw "No Readium subtree metadata found. Run the one-time subtree adoption before updating."
 }
 
-Invoke-Git -c http.version=HTTP/1.1 subtree pull --prefix=readium $Remote $Branch --squash
+$lastSubtreeMessage = git log -1 --format="%B" $lastSubtreeCommit
+$previousSplit = ($lastSubtreeMessage | Select-String "git-subtree-split: ([0-9a-f]+)").Matches.Groups[1].Value
+if (-not $previousSplit) {
+    throw "Could not find the previous Readium subtree split commit in $lastSubtreeCommit."
+}
+
+$upstreamTree = git rev-parse "FETCH_HEAD:readium"
+$previousTree = git rev-parse "$previousSplit^{tree}"
+if ($upstreamTree -eq $previousTree) {
+    Write-Host "Readium subtree is already up to date with $Remote/$Branch."
+    exit 0
+}
+
+$safeBranch = $Branch -replace "[^A-Za-z0-9._-]", "-"
+$splitBranch = "readium-upstream-$safeBranch-split"
+$message = "Synthetic Readium split from $Remote/$Branch"
+$newSplit = $message | git commit-tree $upstreamTree -p $previousSplit
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not create synthetic Readium split commit."
+}
+
+Invoke-Git branch -f $splitBranch $newSplit
+Invoke-Git -c http.version=HTTP/1.1 subtree pull --prefix=readium . $splitBranch --squash -m "Update Readium subtree from $Remote/$Branch"
 
 Write-Host "Readium subtree updated from $Remote/$Branch."
