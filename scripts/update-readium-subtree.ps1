@@ -19,7 +19,10 @@ if ($existingRemote -notcontains $Remote) {
     git remote add $Remote $RemoteUrl
 }
 
-git fetch $Remote $Branch
-git subtree pull --prefix=readium $Remote $Branch --squash
+$env:GIT_HTTP_LOW_SPEED_LIMIT = "1024"
+$env:GIT_HTTP_LOW_SPEED_TIME = "20"
+
+git -c http.version=HTTP/1.1 fetch $Remote $Branch
+git -c http.version=HTTP/1.1 subtree pull --prefix=readium $Remote $Branch --squash
 
 Write-Host "Readium subtree updated from $Remote/$Branch."
