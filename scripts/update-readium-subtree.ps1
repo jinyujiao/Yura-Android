@@ -6,6 +6,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-Git {
+    & git @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "git $($args -join ' ') failed with exit code $LASTEXITCODE."
+    }
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
@@ -22,7 +29,19 @@ if ($existingRemote -notcontains $Remote) {
 $env:GIT_HTTP_LOW_SPEED_LIMIT = "1024"
 $env:GIT_HTTP_LOW_SPEED_TIME = "20"
 
-git -c http.version=HTTP/1.1 fetch $Remote $Branch
-git -c http.version=HTTP/1.1 subtree pull --prefix=readium $Remote $Branch --squash
+Invoke-Git -c http.version=HTTP/1.1 fetch $Remote $Branch
+
+$hasSubtreeMetadata = git log --grep="git-subtree-dir: readium" --format="%H" -1
+if (-not $hasSubtreeMetadata) {
+    throw @"
+Readium was fetched, but the existing readium/ directory was not originally added with git subtree.
+This repository needs a one-time adoption/replacement step before normal subtree pulls can work.
+
+Reason: upstream readium/kotlin-toolkit stores the modules under its own readium/ subdirectory,
+while this repository already has that subdirectory copied into local readium/.
+"@
+}
+
+Invoke-Git -c http.version=HTTP/1.1 subtree pull --prefix=readium $Remote $Branch --squash
 
 Write-Host "Readium subtree updated from $Remote/$Branch."
