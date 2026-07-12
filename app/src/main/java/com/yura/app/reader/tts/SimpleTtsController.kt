@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -95,7 +94,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private val textProcessor = TtsTextProcessor(locale)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
-    private val audioDir = File(appContext.cacheDir, "tts-audio")
+    private val audioCache = TtsAudioCache(appContext)
     private val preferencesStore = TtsPreferencesStore(appContext)
 
     private val _state = MutableStateFlow(
@@ -168,7 +167,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     init {
         Log.d(TAG, "init provider=${preferencesStore.provider()} speed=${preferencesStore.playbackSpeed()}")
-        audioDir.mkdirs()
         createSystemTts()
         player.setAudioAttributes(
             AudioAttributes.Builder()
@@ -241,7 +239,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                         if (request.first != generation || request.second != synthesizingIndex || stopping) {
                             return@post
                         }
-                        boostPcmWavVolume(audioFile(request.second))
+                        audioCache.boostPcmWavVolume(audioCache.fileFor(generation, request.second))
                         playSynthesizedFile(request.second)
                     }
                 }
@@ -453,7 +451,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             player.stop()
             tts.stop()
         }
-        cleanAudioFiles()
+        audioCache.clear()
         if (!keepPlaybackSession) {
             ensureMediaControls()
         }
@@ -518,7 +516,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         stopping = false
         player.stop()
         tts.stop()
-        cleanAudioFiles()
+        audioCache.clear()
         ensureMediaControls()
 
         paragraphs.clear()
@@ -578,7 +576,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         audioRouteListener.unregister()
         releaseMediaControls()
         stopping = false
-        cleanAudioFiles()
+        audioCache.clear()
         onParagraphChanged?.invoke(-1)
         _state.value = _state.value.copy(
             state = State.IDLE,
@@ -712,7 +710,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             return
         }
         currentSentenceIndex = nextIndex
-        val file = audioFile(nextIndex)
+        val file = audioCache.fileFor(generation, nextIndex)
         if (file.exists() && file.length() > 0L) {
             Log.d(TAG, "playNextSentence prefetch hit index=$nextIndex file=${file.length()}")
             prefetchedIndices.remove(nextIndex)
@@ -747,7 +745,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         Log.d(TAG, "synthesizeSentence index=$sentenceIndex provider=${_state.value.provider} textLength=${item.text.length}")
         synthesizingIndex = sentenceIndex
         markSentenceLoading(item)
-        val file = audioFile(sentenceIndex)
+        val file = audioCache.fileFor(generation, sentenceIndex)
         if (file.exists()) file.delete()
 
         when (_state.value.provider) {
@@ -786,7 +784,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         executor.execute {
             runCatching { block() }
                 .onSuccess {
-                    boostPcmWavVolume(file)
+                    audioCache.boostPcmWavVolume(file)
                     Log.d(TAG, "synthesizeCloud success sentence=$sentenceIndex file=${file.length()}")
                     mainHandler.post {
                         if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping) {
@@ -922,7 +920,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun playSynthesizedFile(sentenceIndex: Int) {
-        val file = audioFile(sentenceIndex)
+        val file = audioCache.fileFor(generation, sentenceIndex)
         Log.d(TAG, "playSynthesizedFile index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
         if (!file.exists() || file.length() == 0L) {
             fail("${_state.value.provider.label}\u751f\u6210\u4e86\u7a7a\u97f3\u9891\u3002")
@@ -950,7 +948,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         player.playbackParameters = PlaybackParameters(preferencesStore.playbackSpeed())
         player.prepare()
         player.play()
-        markSentencePlaying(sentenceIndex, durationMs = audioDurationMs(file))
+        markSentencePlaying(sentenceIndex, durationMs = audioCache.durationMs(file))
         releasePlaybackWakeLock()
         prefetchCloudSentences(sentenceIndex + 1)
     }
@@ -965,7 +963,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         if (testPlayback || stopping) return
         if (_state.value.provider == Provider.SYSTEM) return
         val item = speechItems.getOrNull(sentenceIndex) ?: return
-        val file = audioFile(sentenceIndex)
+        val file = audioCache.fileFor(generation, sentenceIndex)
         if (file.exists() && file.length() > 0L) {
             Log.d(TAG, "prefetch already cached index=$sentenceIndex file=${file.length()}")
             prefetchedIndices += sentenceIndex
@@ -983,7 +981,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                     Provider.MICROSOFT -> synthesizeMicrosoft(item.text, file)
                     Provider.SYSTEM -> Unit
                 }
-                boostPcmWavVolume(file)
+                audioCache.boostPcmWavVolume(file)
             }.onSuccess {
                 mainHandler.post {
                     prefetchingIndices.remove(sentenceIndex)
@@ -1080,109 +1078,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         )
     }
 
-    private fun audioDurationMs(file: File): Long {
-        return runCatching {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(file.absolutePath)
-            val duration = retriever
-                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                ?.toLongOrNull()
-                ?: 0L
-            retriever.release()
-            duration
-        }.getOrDefault(0L)
-    }
-
-    private fun boostPcmWavVolume(file: File) {
-        if (!file.exists() || file.length() <= 44L) return
-
-        runCatching {
-            val bytes = file.readBytes()
-            if (!bytes.hasAscii(0, "RIFF") || !bytes.hasAscii(8, "WAVE")) return
-
-            var offset = 12
-            var audioFormat = -1
-            var bitsPerSample = -1
-            var dataOffset = -1
-            var dataSize = 0
-
-            while (offset + 8 <= bytes.size) {
-                val chunkId = bytes.ascii(offset, 4)
-                val chunkSize = bytes.leInt(offset + 4)
-                val chunkDataOffset = offset + 8
-                if (chunkSize < 0 || chunkDataOffset + chunkSize > bytes.size) break
-
-                when (chunkId) {
-                    "fmt " -> if (chunkSize >= 16) {
-                        audioFormat = bytes.leUShort(chunkDataOffset)
-                        bitsPerSample = bytes.leUShort(chunkDataOffset + 14)
-                    }
-                    "data" -> {
-                        dataOffset = chunkDataOffset
-                        dataSize = chunkSize
-                    }
-                }
-
-                offset = chunkDataOffset + chunkSize + (chunkSize and 1)
-            }
-
-            if (audioFormat != 1 || bitsPerSample != 16 || dataOffset < 0 || dataSize <= 0) {
-                return
-            }
-
-            var index = dataOffset
-            val end = (dataOffset + dataSize).coerceAtMost(bytes.size - 1)
-            var peakBefore = 0
-            var peakAfter = 0
-            while (index + 1 <= end) {
-                val sample = bytes.leShort(index)
-                peakBefore = maxOf(peakBefore, kotlin.math.abs(sample.toInt()))
-                val boosted = (sample * SPEECH_VOLUME_GAIN)
-                    .roundToInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                peakAfter = maxOf(peakAfter, kotlin.math.abs(boosted))
-                bytes.writeLeShort(index, boosted.toShort())
-                index += 2
-            }
-
-            file.writeBytes(bytes)
-            Log.d(TAG, "boostPcmWavVolume file=${file.name} gain=$SPEECH_VOLUME_GAIN peak=$peakBefore->$peakAfter")
-        }.onFailure {
-            Log.w(TAG, "boostPcmWavVolume skipped: ${it.message}")
-        }
-    }
-
-    private fun ByteArray.hasAscii(offset: Int, value: String): Boolean =
-        offset >= 0 &&
-            offset + value.length <= size &&
-            value.indices.all { index -> this[offset + index].toInt().toChar() == value[index] }
-
-    private fun ByteArray.ascii(offset: Int, length: Int): String =
-        buildString(length) {
-            repeat(length) { append(this@ascii[offset + it].toInt().toChar()) }
-        }
-
-    private fun ByteArray.leInt(offset: Int): Int =
-        (this[offset].toInt() and 0xff) or
-            ((this[offset + 1].toInt() and 0xff) shl 8) or
-            ((this[offset + 2].toInt() and 0xff) shl 16) or
-            ((this[offset + 3].toInt() and 0xff) shl 24)
-
-    private fun ByteArray.leUShort(offset: Int): Int =
-        (this[offset].toInt() and 0xff) or ((this[offset + 1].toInt() and 0xff) shl 8)
-
-    private fun ByteArray.leShort(offset: Int): Short =
-        leUShort(offset).toShort()
-
-    private fun ByteArray.writeLeShort(offset: Int, value: Short) {
-        val intValue = value.toInt()
-        this[offset] = (intValue and 0xff).toByte()
-        this[offset + 1] = ((intValue shr 8) and 0xff).toByte()
-    }
-
-    private fun audioFile(sentenceIndex: Int): File =
-        File(audioDir, "tts-${generation}-$sentenceIndex.wav")
-
     private fun canStartCurrentProvider(): Boolean =
         _state.value.provider != Provider.SYSTEM || initialized
 
@@ -1202,14 +1097,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val parts = utteranceId?.split(":") ?: return null
         if (parts.size != 3 || parts[0] != "system") return null
         return Pair(parts[1].toIntOrNull() ?: return null, parts[2].toIntOrNull() ?: return null)
-    }
-
-    private fun cleanAudioFiles() {
-        audioDir.listFiles()?.forEach { file ->
-            if (file.isFile && file.name.startsWith("tts-")) {
-                file.delete()
-            }
-        }
     }
 
     private fun fail(message: String) {
@@ -1324,7 +1211,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
         private const val PREFETCH_AHEAD_COUNT = 2
-        private const val SPEECH_VOLUME_GAIN = 1.6f
         private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 2 * 60 * 1000L
         private const val TAG = "YuraTts"
     }
