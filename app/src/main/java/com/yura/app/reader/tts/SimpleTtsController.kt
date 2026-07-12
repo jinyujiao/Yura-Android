@@ -14,7 +14,6 @@ import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
-import androidx.core.content.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -29,7 +28,6 @@ import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 import com.yura.app.reader.MediaService
-import com.yura.app.security.SecureSettings
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -98,19 +96,19 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val audioDir = File(appContext.cacheDir, "tts-audio")
-    private val prefs = appContext.getSharedPreferences("reader-tts", Context.MODE_PRIVATE)
+    private val preferencesStore = TtsPreferencesStore(appContext)
 
     private val _state = MutableStateFlow(
         UiState(
             state = State.LOADING,
-            provider = savedProvider(),
-            mimoVoice = savedMimoVoice(),
-            microsoftVoice = savedMicrosoftVoice(),
-            microsoftVoices = savedMicrosoftVoices(),
-            microsoftRegion = savedMicrosoftRegion(),
-            hasMimoApiKey = savedMimoApiKey().isNotBlank(),
-            hasMicrosoftApiKey = savedMicrosoftApiKey().isNotBlank(),
-            playbackSpeed = savedPlaybackSpeed(),
+            provider = preferencesStore.provider(),
+            mimoVoice = preferencesStore.mimoVoice(),
+            microsoftVoice = preferencesStore.microsoftVoice(),
+            microsoftVoices = preferencesStore.microsoftVoices(),
+            microsoftRegion = preferencesStore.microsoftRegion(),
+            hasMimoApiKey = preferencesStore.mimoApiKey().isNotBlank(),
+            hasMicrosoftApiKey = preferencesStore.microsoftApiKey().isNotBlank(),
+            playbackSpeed = preferencesStore.playbackSpeed(),
         )
     )
     val state: StateFlow<UiState> = _state
@@ -169,7 +167,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     var onQueueEnded: (() -> Unit)? = null
 
     init {
-        Log.d(TAG, "init provider=${savedProvider()} speed=${savedPlaybackSpeed()}")
+        Log.d(TAG, "init provider=${preferencesStore.provider()} speed=${preferencesStore.playbackSpeed()}")
         audioDir.mkdirs()
         createSystemTts()
         player.setAudioAttributes(
@@ -179,7 +177,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 .build(),
             true
         )
-        player.playbackParameters = PlaybackParameters(savedPlaybackSpeed())
+        player.playbackParameters = PlaybackParameters(preferencesStore.playbackSpeed())
         player.addListener(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -318,7 +316,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun selectProvider(provider: Provider) {
         Log.d(TAG, "selectProvider provider=$provider")
-        prefs.edit { putString(KEY_PROVIDER, provider.name) }
+        preferencesStore.setProvider(provider)
         stop()
         if (provider == Provider.SYSTEM && !initialized) {
             createSystemTts()
@@ -333,39 +331,39 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun setMimoVoice(voice: String) {
-        prefs.edit { putString(KEY_MIMO_VOICE, voice) }
+        preferencesStore.setMimoVoice(voice)
         _state.update { it.copy(mimoVoice = voice, engineName = displayEngineName()) }
     }
 
     fun setMimoApiKey(value: String) {
         val trimmed = value.trim()
-        SecureSettings.putString(appContext, KEY_MIMO_API_KEY, trimmed)
+        preferencesStore.setMimoApiKey(trimmed)
         _state.update { it.copy(hasMimoApiKey = trimmed.isNotBlank()) }
     }
 
-    fun currentMimoApiKey(): String = savedMimoApiKey()
+    fun currentMimoApiKey(): String = preferencesStore.mimoApiKey()
 
     fun setMicrosoftVoice(voice: String) {
-        prefs.edit { putString(KEY_MICROSOFT_VOICE, voice.trim().ifBlank { DEFAULT_MICROSOFT_VOICE }) }
-        _state.update { it.copy(microsoftVoice = savedMicrosoftVoice(), engineName = displayEngineName()) }
+        preferencesStore.setMicrosoftVoice(voice)
+        _state.update { it.copy(microsoftVoice = preferencesStore.microsoftVoice(), engineName = displayEngineName()) }
     }
 
     fun setMicrosoftRegion(region: String) {
-        prefs.edit { putString(KEY_MICROSOFT_REGION, region.trim()) }
+        preferencesStore.setMicrosoftRegion(region)
         _state.update { it.copy(microsoftRegion = region.trim()) }
     }
 
     fun setMicrosoftApiKey(value: String) {
         val trimmed = value.trim()
-        SecureSettings.putString(appContext, KEY_MICROSOFT_API_KEY, trimmed)
+        preferencesStore.setMicrosoftApiKey(trimmed)
         _state.update { it.copy(hasMicrosoftApiKey = trimmed.isNotBlank()) }
     }
 
-    fun currentMicrosoftApiKey(): String = savedMicrosoftApiKey()
+    fun currentMicrosoftApiKey(): String = preferencesStore.microsoftApiKey()
 
     fun refreshMicrosoftVoices() {
-        val apiKey = savedMicrosoftApiKey()
-        val region = savedMicrosoftRegion()
+        val apiKey = preferencesStore.microsoftApiKey()
+        val region = preferencesStore.microsoftRegion()
         if (apiKey.isBlank() || region.isBlank()) {
             _state.update {
                 it.copy(
@@ -382,22 +380,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 fetchMicrosoftVoices(region, apiKey)
             }.onSuccess { voices ->
                 val nextVoices = voices.ifEmpty { MICROSOFT_VOICES }
-                val selected = savedMicrosoftVoice()
+                val selected = preferencesStore.microsoftVoice()
                     .takeIf { saved -> nextVoices.any { it.shortName == saved } }
                     ?: nextVoices.first().shortName
-                prefs.edit {
-                    putString(KEY_MICROSOFT_VOICES, JSONArray().also { array ->
-                        nextVoices.forEach { voice ->
-                            array.put(
-                                JSONObject()
-                                    .put("shortName", voice.shortName)
-                                    .put("displayName", voice.displayName)
-                                    .put("locale", voice.locale)
-                            )
-                        }
-                    }.toString())
-                    putString(KEY_MICROSOFT_VOICE, selected)
-                }
+                preferencesStore.saveMicrosoftVoices(nextVoices, selected)
                 _state.update {
                     it.copy(
                         microsoftVoice = selected,
@@ -425,7 +411,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun setPlaybackSpeed(speed: Float) {
         val nearest = PLAYBACK_SPEEDS.minBy { kotlin.math.abs(it - speed) }
-        prefs.edit { putFloat(KEY_PLAYBACK_SPEED, nearest) }
+        preferencesStore.setPlaybackSpeed(nearest)
         player.playbackParameters = PlaybackParameters(nearest)
         tts.setSpeechRate(nearest)
         _state.update { it.copy(playbackSpeed = nearest) }
@@ -783,7 +769,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     private fun synthesizeSystem(item: SpeechItem, file: File) {
         val utteranceId = requestId(generation, item.sentenceGlobalIndex)
-        tts.setSpeechRate(savedPlaybackSpeed())
+        tts.setSpeechRate(preferencesStore.playbackSpeed())
         val result = tts.synthesizeToFile(item.text, Bundle(), file, utteranceId)
         Log.d(TAG, "synthesizeSystem utterance=$utteranceId result=$result textLength=${item.text.length} file=${file.absolutePath}")
         if (result == TextToSpeech.ERROR) {
@@ -820,8 +806,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun synthesizeMimo(text: String, file: File) {
-        val apiKey = savedMimoApiKey()
-        Log.d(TAG, "synthesizeMimo voice=${savedMimoVoice()} textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
+        val apiKey = preferencesStore.mimoApiKey()
+        Log.d(TAG, "synthesizeMimo voice=${preferencesStore.mimoVoice()} textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
         require(apiKey.isNotBlank()) { "MiMo API key is empty." }
 
         val body = JSONObject()
@@ -839,7 +825,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             .put(
                 "audio",
                 JSONObject()
-                    .put("voice", savedMimoVoice())
+                    .put("voice", preferencesStore.mimoVoice())
                     .put("format", "wav")
             )
             .toString()
@@ -861,9 +847,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun synthesizeMicrosoft(text: String, file: File) {
-        val apiKey = savedMicrosoftApiKey()
-        val region = savedMicrosoftRegion()
-        Log.d(TAG, "synthesizeMicrosoft voice=${savedMicrosoftVoice()} region=$region textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
+        val apiKey = preferencesStore.microsoftApiKey()
+        val region = preferencesStore.microsoftRegion()
+        Log.d(TAG, "synthesizeMicrosoft voice=${preferencesStore.microsoftVoice()} region=$region textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
         require(apiKey.isNotBlank()) { "Microsoft Speech key is empty." }
         require(region.isNotBlank()) { "Microsoft Speech region is empty." }
 
@@ -871,7 +857,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             .openConnection() as HttpURLConnection
         val ssml = """
             <speak version="1.0" xml:lang="zh-CN">
-                <voice xml:lang="zh-CN" name="${escapeXml(savedMicrosoftVoice())}">${escapeXml(text)}</voice>
+                <voice xml:lang="zh-CN" name="${escapeXml(preferencesStore.microsoftVoice())}">${escapeXml(text)}</voice>
             </speak>
         """.trimIndent()
         connection.requestMethod = "POST"
@@ -961,7 +947,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 )
                 .build()
         )
-        player.playbackParameters = PlaybackParameters(savedPlaybackSpeed())
+        player.playbackParameters = PlaybackParameters(preferencesStore.playbackSpeed())
         player.prepare()
         player.play()
         markSentencePlaying(sentenceIndex, durationMs = audioDurationMs(file))
@@ -1231,7 +1217,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         if (_state.value.provider != Provider.SYSTEM && initialized && speechItems.isNotEmpty()) {
             val resumeAt = currentSentenceIndex.coerceAtLeast(0)
             mainHandler.post {
-                prefs.edit { putString(KEY_PROVIDER, Provider.SYSTEM.name) }
+                preferencesStore.setProvider(Provider.SYSTEM)
                 player.stop()
                 _state.update { it.copy(provider = Provider.SYSTEM, errorMessage = "Cloud TTS failed; switched to system TTS.") }
                 playFromSentence(resumeAt)
@@ -1307,49 +1293,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private fun displayEngineName(provider: Provider = _state.value.provider): String =
         when (provider) {
             Provider.SYSTEM -> tts.defaultEngine.orEmpty()
-            Provider.MIMO -> "MiMo ${savedMimoVoice()}"
-            Provider.MICROSOFT -> "Microsoft ${savedMicrosoftVoice()}"
+            Provider.MIMO -> "MiMo ${preferencesStore.mimoVoice()}"
+            Provider.MICROSOFT -> "Microsoft ${preferencesStore.microsoftVoice()}"
         }
-
-    private fun savedProvider(): Provider =
-        runCatching { Provider.valueOf(prefs.getString(KEY_PROVIDER, Provider.SYSTEM.name).orEmpty()) }
-            .getOrDefault(Provider.SYSTEM)
-
-    private fun savedMimoVoice(): String =
-        prefs.getString(KEY_MIMO_VOICE, DEFAULT_MIMO_VOICE).orEmpty().ifBlank { DEFAULT_MIMO_VOICE }
-
-    private fun savedMimoApiKey(): String =
-        SecureSettings.migrateString(appContext, TTS_PREFS_NAME, KEY_MIMO_API_KEY)
-
-    private fun savedMicrosoftVoice(): String =
-        prefs.getString(KEY_MICROSOFT_VOICE, DEFAULT_MICROSOFT_VOICE).orEmpty().ifBlank { DEFAULT_MICROSOFT_VOICE }
-
-    private fun savedMicrosoftVoices(): List<MicrosoftVoice> {
-        val raw = prefs.getString(KEY_MICROSOFT_VOICES, "").orEmpty()
-        val fetched = runCatching {
-            val array = JSONArray(raw)
-            List(array.length()) { index ->
-                val item = array.getJSONObject(index)
-                MicrosoftVoice(
-                    shortName = item.optString("shortName"),
-                    displayName = item.optString("displayName"),
-                    locale = item.optString("locale"),
-                )
-            }.filter { it.shortName.isNotBlank() && it.displayName.isNotBlank() }
-        }.getOrDefault(emptyList())
-        return fetched.ifEmpty { MICROSOFT_VOICES }
-    }
-
-    private fun savedMicrosoftRegion(): String =
-        prefs.getString(KEY_MICROSOFT_REGION, "").orEmpty()
-
-    private fun savedMicrosoftApiKey(): String =
-        SecureSettings.migrateString(appContext, TTS_PREFS_NAME, KEY_MICROSOFT_API_KEY)
-
-    private fun savedPlaybackSpeed(): Float {
-        val saved = prefs.getFloat(KEY_PLAYBACK_SPEED, DEFAULT_PLAYBACK_SPEED)
-        return PLAYBACK_SPEEDS.minBy { kotlin.math.abs(it - saved) }
-    }
 
     private fun escapeXml(value: String): String =
         value
@@ -1377,17 +1323,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
-        private const val TTS_PREFS_NAME = "reader-tts"
-        private const val KEY_PROVIDER = "provider"
-        private const val KEY_MIMO_VOICE = "mimo_voice"
-        private const val KEY_MIMO_API_KEY = "mimo_api_key"
-        private const val KEY_MICROSOFT_VOICE = "microsoft_voice"
-        private const val KEY_MICROSOFT_VOICES = "microsoft_voices"
-        private const val KEY_MICROSOFT_REGION = "microsoft_region"
-        private const val KEY_MICROSOFT_API_KEY = "microsoft_api_key"
-        private const val KEY_PLAYBACK_SPEED = "playback_speed"
-        private const val MAX_TTS_CHUNK_CHARS = 160
-        private const val MIN_TTS_CHUNK_CHARS = 70
         private const val PREFETCH_AHEAD_COUNT = 2
         private const val SPEECH_VOLUME_GAIN = 1.6f
         private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 2 * 60 * 1000L
