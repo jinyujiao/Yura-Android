@@ -28,7 +28,9 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
-        <activity android:name=".reader.ReaderActivity" />
+        <activity
+            android:name=".reader.ReaderActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
