@@ -28,9 +28,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.yura.app.reader.MediaService
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.Base64
 import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -96,6 +93,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private val executor = Executors.newSingleThreadExecutor()
     private val audioCache = TtsAudioCache(appContext)
     private val preferencesStore = TtsPreferencesStore(appContext)
+    private val cloudTtsClient = CloudTtsClient()
 
     private val _state = MutableStateFlow(
         UiState(
@@ -375,7 +373,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         _state.update { it.copy(microsoftVoicesLoading = true, errorMessage = null) }
         executor.execute {
             runCatching {
-                fetchMicrosoftVoices(region, apiKey)
+                cloudTtsClient.fetchMicrosoftVoices(region, apiKey)
             }.onSuccess { voices ->
                 val nextVoices = voices.ifEmpty { MICROSOFT_VOICES }
                 val selected = preferencesStore.microsoftVoice()
@@ -806,119 +804,15 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private fun synthesizeMimo(text: String, file: File) {
         val apiKey = preferencesStore.mimoApiKey()
         Log.d(TAG, "synthesizeMimo voice=${preferencesStore.mimoVoice()} textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
-        require(apiKey.isNotBlank()) { "MiMo API key is empty." }
-
-        val body = JSONObject()
-            .put("model", MIMO_MODEL)
-            .put(
-                "messages",
-                org.json.JSONArray()
-                    .put(
-                        JSONObject()
-                            .put("role", "user")
-                            .put("content", "请用自然、清晰、适合阅读的语气朗读。")
-                    )
-                    .put(JSONObject().put("role", "assistant").put("content", text))
-            )
-            .put(
-                "audio",
-                JSONObject()
-                    .put("voice", preferencesStore.mimoVoice())
-                    .put("format", "wav")
-            )
-            .toString()
-
-        val json = postJson(
-            url = MIMO_ENDPOINT,
-            apiKey = apiKey,
-            body = body,
-        )
-        val audioBase64 = json
-            .optJSONArray("choices")
-            ?.optJSONObject(0)
-            ?.optJSONObject("message")
-            ?.optJSONObject("audio")
-            ?.optString("data")
-            .orEmpty()
-        require(audioBase64.isNotBlank()) { "MiMo \u6ca1\u6709\u8fd4\u56de\u97f3\u9891\u6570\u636e\u3002" }
-        file.writeBytes(Base64.getDecoder().decode(audioBase64))
+        cloudTtsClient.synthesizeMimo(text, apiKey, preferencesStore.mimoVoice(), file)
     }
 
     private fun synthesizeMicrosoft(text: String, file: File) {
         val apiKey = preferencesStore.microsoftApiKey()
         val region = preferencesStore.microsoftRegion()
         Log.d(TAG, "synthesizeMicrosoft voice=${preferencesStore.microsoftVoice()} region=$region textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
-        require(apiKey.isNotBlank()) { "Microsoft Speech key is empty." }
-        require(region.isNotBlank()) { "Microsoft Speech region is empty." }
-
-        val connection = URL("https://$region.tts.speech.microsoft.com/cognitiveservices/v1")
-            .openConnection() as HttpURLConnection
-        val ssml = """
-            <speak version="1.0" xml:lang="zh-CN">
-                <voice xml:lang="zh-CN" name="${escapeXml(preferencesStore.microsoftVoice())}">${escapeXml(text)}</voice>
-            </speak>
-        """.trimIndent()
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 45000
-        connection.doOutput = true
-        connection.setRequestProperty("Ocp-Apim-Subscription-Key", apiKey)
-        connection.setRequestProperty("Content-Type", "application/ssml+xml")
-        connection.setRequestProperty("X-Microsoft-OutputFormat", "riff-24khz-16bit-mono-pcm")
-        connection.setRequestProperty("User-Agent", "Yura")
-        connection.outputStream.use { it.write(ssml.toByteArray(Charsets.UTF_8)) }
-        if (connection.responseCode !in 200..299) {
-            val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("Microsoft \u6717\u8bfb\u5931\u8d25\uff08${connection.responseCode}\uff09\u3002$message")
-        }
-        connection.inputStream.use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
-        }
+        cloudTtsClient.synthesizeMicrosoft(text, apiKey, region, preferencesStore.microsoftVoice(), file)
     }
-
-    private fun fetchMicrosoftVoices(region: String, apiKey: String): List<MicrosoftVoice> {
-        val connection = URL("https://$region.tts.speech.microsoft.com/cognitiveservices/voices/list")
-            .openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 12_000
-        connection.readTimeout = 20_000
-        connection.setRequestProperty("Ocp-Apim-Subscription-Key", apiKey)
-
-        val body = runCatching {
-            if (connection.responseCode in 200..299) {
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            }
-        }.getOrDefault("")
-
-        if (connection.responseCode !in 200..299) {
-            throw IllegalStateException("刷新 Microsoft 音色失败 (${connection.responseCode})。${body.take(160)}")
-        }
-
-        val array = JSONArray(body)
-        return List(array.length()) { index -> array.getJSONObject(index) }
-            .mapNotNull { item ->
-                val shortName = item.optString("ShortName").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                val locale = item.optString("Locale")
-                if (!locale.startsWith("zh-", ignoreCase = true) && !locale.startsWith("en-", ignoreCase = true)) {
-                    return@mapNotNull null
-                }
-                val localName = item.optString("LocalName").takeIf { it.isNotBlank() }
-                val displayName = item.optString("DisplayName").takeIf { it.isNotBlank() }
-                MicrosoftVoice(
-                    shortName = shortName,
-                    displayName = listOfNotNull(localName ?: displayName, locale)
-                        .joinToString(" · "),
-                    locale = locale,
-                )
-            }
-            .distinctBy { it.shortName }
-            .sortedWith(compareBy<MicrosoftVoice> { if (it.locale.startsWith("zh-", ignoreCase = true)) 0 else 1 }
-                .thenBy { it.locale }
-                .thenBy { it.displayName })
-    }
-
     private fun playSynthesizedFile(sentenceIndex: Int) {
         val file = audioCache.fileFor(generation, sentenceIndex)
         Log.d(TAG, "playSynthesizedFile index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
@@ -1156,25 +1050,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 Log.d(TAG, "releasePlaybackWakeLock")
             }
         }
-    }
-
-    private fun postJson(url: String, apiKey: String, body: String): JSONObject {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 45000
-        connection.doOutput = true
-        connection.setRequestProperty("api-key", apiKey)
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.setRequestProperty("Accept", "application/json")
-        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        val responseText = if (connection.responseCode in 200..299) {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } else {
-            val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("MiMo \u6717\u8bfb\u5931\u8d25\uff08${connection.responseCode}\uff09\u3002${message.ifBlank { "\u6ca1\u6709\u9519\u8bef\u8be6\u60c5\u3002" }}")
-        }
-        return JSONObject(responseText)
     }
 
     private fun displayEngineName(provider: Provider = _state.value.provider): String =
