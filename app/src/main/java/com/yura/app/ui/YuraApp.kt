@@ -566,19 +566,7 @@ private fun LibraryScreen(
                 onClick = {
                     if (selectedBookIds.isEmpty()) onOpenReader(book) else selectedBookIds = selectedBookIds.toggle(book.id)
                 },
-                onStartSelection = { selectedBookIds = selectedBookIds.toggle(book.id) },
-                onChangeCover = {
-                    onChangeCover(book)
-                    selectedBookIds = emptySet()
-                },
-                onRemoveFromDevice = {
-                    selectedBookIds = setOf(book.id)
-                    deleteAction = ShelfDeleteAction.RemoveFromDevice
-                },
-                onDeleteEverywhere = {
-                    selectedBookIds = setOf(book.id)
-                    deleteAction = ShelfDeleteAction.DeleteEverywhere
-                },
+                onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
             )
         }
     }
@@ -593,16 +581,40 @@ private fun ShelfSelectionBar(
     onDeleteEverywhere: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = onChangeCover, enabled = canChangeCover, label = { Text("更换封面") })
-                AssistChip(onClick = onCancel, label = { Text("取消选择") })
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold)
+                TextButton(onClick = onCancel) { Text("取消选择") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = onRemoveFromDevice, label = { Text("移除本机") })
-                AssistChip(onClick = onDeleteEverywhere, label = { Text("所有设备删除") })
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AssistChip(
+                    onClick = onRemoveFromDevice,
+                    label = { Text("移除本机") },
+                )
+                AssistChip(
+                    onClick = onDeleteEverywhere,
+                    label = { Text("全设备删除") },
+                )
+                AssistChip(
+                    onClick = onChangeCover,
+                    enabled = canChangeCover,
+                    label = { Text("更换封面") },
+                )
             }
         }
     }
@@ -652,83 +664,14 @@ private fun ShelfBookCard(
     book: Book,
     selected: Boolean,
     onClick: () -> Unit,
-    onStartSelection: () -> Unit,
-    onChangeCover: () -> Unit,
-    onRemoveFromDevice: () -> Unit,
-    onDeleteEverywhere: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
-    var actionMenuVisible by remember { mutableStateOf(false) }
-    var confirmDeleteEverywhere by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
     val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
 
-    if (actionMenuVisible) {
-        AlertDialog(
-            onDismissRequest = { actionMenuVisible = false },
-            title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            text = { Text("选择要对这本书执行的操作") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        actionMenuVisible = false
-                        onChangeCover()
-                    },
-                ) {
-                    Text("更换封面")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { actionMenuVisible = false }) {
-                        Text("取消")
-                    }
-                    TextButton(
-                        onClick = {
-                            actionMenuVisible = false
-                            onRemoveFromDevice()
-                        },
-                    ) {
-                        Text("移除本机")
-                    }
-                    TextButton(
-                        onClick = {
-                            actionMenuVisible = false
-                            confirmDeleteEverywhere = true
-                        },
-                    ) {
-                        Text("全设备删除")
-                    }
-                }
-            },
-        )
-    }
-
-    if (confirmDeleteEverywhere) {
-        AlertDialog(
-            onDismissRequest = { confirmDeleteEverywhere = false },
-            title = { Text("删除所有设备上的书") },
-            text = { Text("《${book.title}》会从所有已同步设备移除，并阻止再次下载。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDeleteEverywhere = false
-                        onDeleteEverywhere()
-                    },
-                ) {
-                    Text("删除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteEverywhere = false }) {
-                    Text("取消")
-                }
-            },
-        )
-    }
-
     Column(
         modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false; shadowElevation = 0f }
-            .combinedClickable(onClick = onClick, onLongClick = { actionMenuVisible = true }),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box {
             Surface(
