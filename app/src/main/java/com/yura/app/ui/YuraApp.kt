@@ -317,53 +317,32 @@ private fun ImportButton(
     importing: Boolean,
     onClick: () -> Unit,
 ) {
-    IconButton(
-        onClick = onClick,
-        enabled = !importing,
-        modifier = Modifier
-            .padding(end = 12.dp)
-            .size(48.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = if (importing) "..." else "+",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
+    CompactToolbarButton(symbol = if (importing) "…" else "+", onClick = onClick, enabled = !importing)
 }
 
 @Composable
 private fun CompactSortButton(
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
-        val color = MaterialTheme.colorScheme.primary
-        Canvas(modifier = Modifier.size(24.dp)) {
-            val centerY = size.height / 2f
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY - 7.dp.toPx()), end = androidx.compose.ui.geometry.Offset(21.dp.toPx(), centerY - 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY), end = androidx.compose.ui.geometry.Offset(16.dp.toPx(), centerY), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY + 7.dp.toPx()), end = androidx.compose.ui.geometry.Offset(11.dp.toPx(), centerY + 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-        }
-    }
+    CompactToolbarButton(symbol = "≡", onClick = onClick)
 }
 
 @Composable
 private fun CompactToolbarButton(
     symbol: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
         Text(
             text = symbol,
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
 @Composable
 private fun FloatingPillNavigation(
     selected: RootTab,
@@ -593,42 +572,44 @@ private fun ShelfSelectionBar(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = Color.Transparent,
+    Column(
         modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold)
-                TextButton(onClick = onCancel) { Text("取消选择") }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AssistChip(
-                    onClick = onRemoveFromDevice,
-                    label = { Text("移除本机") },
-                )
-                AssistChip(
-                    onClick = onDeleteEverywhere,
-                    label = { Text("全设备删除") },
-                )
-                AssistChip(
-                    onClick = onChangeCover,
-                    enabled = canChangeCover,
-                    label = { Text("更换封面") },
-                )
+            Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            TextButton(onClick = onCancel) {
+                Text("取消选择", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ShelfActionButton(text = "移除本机", onClick = onRemoveFromDevice)
+            ShelfActionButton(text = "全设备删除", onClick = onDeleteEverywhere)
+            ShelfActionButton(text = "更换封面", onClick = onChangeCover, enabled = canChangeCover)
+        }
+    }
+}
+
+@Composable
+private fun ShelfActionButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    TextButton(onClick = onClick, enabled = enabled) {
+        Text(
+            text = text,
+            fontWeight = FontWeight.Bold,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

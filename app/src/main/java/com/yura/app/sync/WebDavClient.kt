@@ -164,8 +164,16 @@ class WebDavClient {
             }
         }
 
-    private fun okhttp3.Response.errorText(): String =
-        body?.string().orEmpty().take(180)
+    private fun okhttp3.Response.errorText(): String {
+        val responseBody = body?.string().orEmpty()
+        return when {
+            code == 403 && responseBody.contains("TrafficRateExhausted", ignoreCase = true) ->
+                "服务端限流，请稍后几分钟再试。"
+            code == 403 -> "没有访问权限，请检查 WebDAV 账号、授权或远端目录权限。"
+            responseBody.isBlank() -> "服务器未返回错误说明。"
+            else -> responseBody.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(120)
+        }
+    }
 
     private companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
