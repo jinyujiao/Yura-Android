@@ -220,7 +220,14 @@ fun YuraApp() {
                                         onValueChange = { searchQuery = it },
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true,
-                                        placeholder = { Text("搜索书名或作者") },
+                                        placeholder = {
+                                            Text(
+                                                text = "搜索书名或作者",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        },
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Color.Transparent,
