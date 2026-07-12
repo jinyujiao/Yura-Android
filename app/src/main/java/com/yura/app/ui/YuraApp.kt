@@ -526,21 +526,6 @@ private fun LibraryScreen(
         horizontalArrangement = Arrangement.spacedBy(28.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
-        if (selectedBooks.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                ShelfSelectionBar(
-                    selectedCount = selectedBooks.size,
-                    canChangeCover = selectedBooks.size == 1,
-                    onChangeCover = {
-                        selectedBooks.singleOrNull()?.let(onChangeCover)
-                        selectedBookIds = emptySet()
-                    },
-                    onRemoveFromDevice = { deleteAction = ShelfDeleteAction.RemoveFromDevice },
-                    onDeleteEverywhere = { deleteAction = ShelfDeleteAction.DeleteEverywhere },
-                    onCancel = { selectedBookIds = emptySet() },
-                )
-            }
-        }
         if (state.isImporting) item(span = { GridItemSpan(maxLineSpan) }) { ImportStatusBanner() }
         if (state.isLoading) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -569,6 +554,7 @@ private fun LibraryScreen(
                 onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
             )
         }
+        )
     }
 }
 
@@ -583,11 +569,11 @@ private fun ShelfSelectionBar(
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
