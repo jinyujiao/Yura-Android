@@ -545,175 +545,6 @@ private fun CleanTtsSettingsPage(controller: SimpleTtsController) {
 }
 
 @Composable
-private fun WebDavSettingsPage() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var settings by remember { mutableStateOf(WebDavSettingsStore.load(context)) }
-    var testing by remember { mutableStateOf(false) }
-    var testMessage by remember { mutableStateOf<String?>(null) }
-    var testOk by remember { mutableStateOf(false) }
-    val workInfo by produceState<WorkInfo?>(initialValue = null, context) {
-        while (true) {
-            value = WorkManager.getInstance(context)
-                .getWorkInfosForUniqueWork(WebDavSyncWorker.WORK_NAME)
-                .get()
-                .firstOrNull()
-            delay(750)
-        }
-    }
-    val syncing = workInfo?.state == WorkInfo.State.RUNNING || workInfo?.state == WorkInfo.State.ENQUEUED
-    val syncMessage = when (workInfo?.state) {
-        WorkInfo.State.RUNNING -> "正在后台同步…"
-        WorkInfo.State.ENQUEUED -> "等待网络后自动同步…"
-        WorkInfo.State.FAILED -> "同步失败：${workInfo?.outputData?.getString(WebDavSyncWorker.KEY_ERROR) ?: "请重试"}"
-        WorkInfo.State.SUCCEEDED -> "同步完成"
-        else -> null
-    }
-    val syncOk = workInfo?.state == WorkInfo.State.SUCCEEDED
-    var lastSyncAt by remember { mutableStateOf(WebDavSettingsStore.lastSyncAt(context)) }
-
-    fun update(updated: WebDavSettings) {
-        settings = updated
-        WebDavSettingsStore.save(context, updated)
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            SettingsGroup(title = "\u540c\u6b65") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Button(
-                            enabled = !syncing,
-                            onClick = { WebDavSyncWorker.enqueue(context) },
-                        ) {
-                            Text(if (syncing) "同步中" else "立即同步")
-                        }
-                        Text(
-                            text = syncMessage ?: "同步书籍文件和阅读进度，不会删除本地数据。",
-                            color = when {
-                                syncMessage == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                                syncOk -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.error
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (workInfo?.state == WorkInfo.State.FAILED) {
-                        TextButton(onClick = { WebDavSyncWorker.enqueue(context) }) { Text("重试") }
-                    }
-                    Text(
-                        text = if (lastSyncAt > 0L) {
-                            "\u4e0a\u6b21\u540c\u6b65\uff1a${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(lastSyncAt))}"
-                        } else {
-                            "\u8fd8\u6ca1\u6709\u6210\u529f\u540c\u6b65\u8fc7"
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-        item {
-            SettingsGroup(title = "\u540c\u6b65\u670d\u52a1") {
-                AppPreferenceSwitch(
-                    title = "\u542f\u7528 WebDAV",
-                    subtitle = "\u5f00\u542f\u540e\u53ef\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6",
-                    checked = settings.enabled,
-                    onCheckedChange = { update(settings.copy(enabled = it)) },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SettingsTextField(
-                    value = settings.serverUrl,
-                    onValueChange = { update(settings.copy(serverUrl = it)) },
-                    label = "WebDAV URL",
-                    placeholder = "https://example.com/dav",
-                )
-                SettingsTextField(
-                    value = settings.remotePath,
-                    onValueChange = { update(settings.copy(remotePath = it)) },
-                    label = "\u8fdc\u7aef\u76ee\u5f55",
-                    placeholder = "/Yura",
-                )
-            }
-        }
-        item {
-            SettingsGroup(title = "\u8d26\u53f7") {
-                SettingsTextField(
-                    value = settings.username,
-                    onValueChange = { update(settings.copy(username = it)) },
-                    label = "\u7528\u6237\u540d",
-                    placeholder = "\u53ef\u7559\u7a7a",
-                )
-                SettingsTextField(
-                    value = settings.password,
-                    onValueChange = { update(settings.copy(password = it)) },
-                    label = "\u5bc6\u7801",
-                    placeholder = "\u53ef\u7559\u7a7a",
-                    password = true,
-                )
-            }
-        }
-        item {
-            SettingsGroup(title = "\u8fde\u63a5\u6d4b\u8bd5") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Button(
-                            enabled = !testing,
-                            onClick = {
-                                testing = true
-                                testMessage = null
-                                scope.launch {
-                                    val result = WebDavClient().testConnection(settings)
-                                    testing = false
-                                    testOk = result.isSuccess
-                                    testMessage = result.fold(
-                                        onSuccess = { "\u8fde\u63a5\u6210\u529f" },
-                                        onFailure = { it.message ?: "\u8fde\u63a5\u5931\u8d25" },
-                                    )
-                                }
-                            },
-                        ) {
-                            Text(if (testing) "\u6d4b\u8bd5\u4e2d" else "\u6d4b\u8bd5\u8fde\u63a5")
-                        }
-                        Text(
-                            text = testMessage ?: "\u4f7f\u7528 PROPFIND \u68c0\u67e5\u8fdc\u7aef\u76ee\u5f55\u662f\u5426\u53ef\u8bbf\u95ee\u3002",
-                            color = when {
-                                testMessage == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                                testOk -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.error
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun SettingsEntryRow(title: String, subtitle: String, icon: String, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
@@ -775,7 +606,7 @@ private fun AppPreferenceSlider(
 }
 
 @Composable
-private fun AppPreferenceSwitch(
+fun AppPreferenceSwitch(
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -848,7 +679,7 @@ private fun roundToStep(value: Float, step: Float): Double =
     (kotlin.math.round(value / step) * step).toDouble()
 
 @Composable
-private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             title,
@@ -911,7 +742,7 @@ private fun SettingTextRow(title: String, value: String, onClick: (() -> Unit)? 
 }
 
 @Composable
-private fun SettingsTextField(
+fun SettingsTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
