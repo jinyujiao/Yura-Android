@@ -40,7 +40,7 @@ class WebDavSyncRepository(context: Context) {
                 val mergeResult = mergeRemote(remote)
                 val downloadedBooks = downloadMissingBooks(settings, remote)
                 val local = buildSnapshot()
-                val uploadedBooks = uploadLocalBooks(settings, local)
+                val uploadedBooks = uploadLocalBooks(settings, local, remote)
                 client.putTextIfUnchanged(
                     settings = settings,
                     fileName = SYNC_FILE,
@@ -97,23 +97,31 @@ class WebDavSyncRepository(context: Context) {
         return downloaded
     }
 
-    private suspend fun uploadLocalBooks(settings: WebDavSettings, snapshot: SyncSnapshot): Int {
+    private suspend fun uploadLocalBooks(
+        settings: WebDavSettings,
+        local: SyncSnapshot,
+        remote: SyncSnapshot,
+    ): Int {
+        val remoteBooks = remote.books.associateBy { it.identifier }
         var uploaded = 0
 
-        snapshot.books.forEach { book ->
+        local.books.forEach { book ->
             val source = book.localPath
                 ?.let(::File)
                 ?.takeIf { it.exists() && it.isFile }
                 ?: return@forEach
             val fileName = book.fileName ?: return@forEach
-            client.putFile(settings, fileName, source).getOrThrow()
-            uploaded++
+            val remoteBook = remoteBooks[book.identifier]
+            if (book.fileHash.isNotBlank() && book.fileHash != remoteBook?.fileHash) {
+                client.putFile(settings, fileName, source).getOrThrow()
+                uploaded++
+            }
 
             val cover = book.localCoverPath
                 ?.let(::File)
                 ?.takeIf { it.exists() && it.isFile }
             val coverFileName = book.coverFileName
-            if (cover != null && coverFileName != null) {
+            if (cover != null && coverFileName != null && book.coverHash.isNotBlank() && book.coverHash != remoteBook?.coverHash) {
                 client.putFile(settings, coverFileName, cover).getOrThrow()
             }
         }
@@ -170,6 +178,8 @@ class WebDavSyncRepository(context: Context) {
                 mediaType = book.rawMediaType,
                 fileName = bookFile?.let { syncFileName(book.identifier, it.extension.ifBlank { "epub" }) },
                 coverFileName = coverFile?.let { syncFileName("${book.identifier}-cover", it.extension.ifBlank { "png" }) },
+                fileHash = bookFile?.sha256().orEmpty(),
+                coverHash = coverFile?.sha256().orEmpty(),
                 localPath = bookFile?.absolutePath,
                 localCoverPath = coverFile?.absolutePath,
             )
@@ -190,7 +200,7 @@ class WebDavSyncRepository(context: Context) {
     ) {
         fun toJson(): JSONObject =
             JSONObject()
-                .put("version", 3)
+                .put("version", 4)
                 .put("books", JSONArray().also { array -> books.forEach { array.put(it.toJson()) } })
                 .put("deletedBooks", JSONArray().also { array -> deletedBooks.forEach { array.put(it.toJson()) } })
 
@@ -233,6 +243,8 @@ class WebDavSyncRepository(context: Context) {
         val mediaType: String,
         val fileName: String?,
         val coverFileName: String?,
+        val fileHash: String = "",
+        val coverHash: String = "",
         val localPath: String? = null,
         val localCoverPath: String? = null,
     ) {
@@ -247,6 +259,8 @@ class WebDavSyncRepository(context: Context) {
                 .put("mediaType", mediaType)
                 .put("fileName", fileName)
                 .put("coverFileName", coverFileName)
+                .put("fileHash", fileHash)
+                .put("coverHash", coverHash)
 
         companion object {
             fun fromJson(json: JSONObject): SyncBook =
@@ -260,6 +274,8 @@ class WebDavSyncRepository(context: Context) {
                     mediaType = json.optString("mediaType"),
                     fileName = json.optString("fileName").takeIf { it.isNotBlank() },
                     coverFileName = json.optString("coverFileName").takeIf { it.isNotBlank() },
+                    fileHash = json.optString("fileHash"),
+                    coverHash = json.optString("coverHash"),
                 )
         }
     }
@@ -283,6 +299,18 @@ class WebDavSyncRepository(context: Context) {
         MessageDigest.getInstance("SHA-256")
             .digest(toByteArray())
             .joinToString(separator = "") { byte -> "%02x".format(byte) }
+
+    private fun File.sha256(): String =
+        inputStream().buffered().use { input ->
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+            digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }
 
     private companion object {
         const val SYNC_FILE = "yura-sync.json"
