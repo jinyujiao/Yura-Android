@@ -218,7 +218,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 override fun onStart(utteranceId: String?) = Unit
 
                 override fun onDone(utteranceId: String?) {
-                    val request = parseRequest(utteranceId) ?: return
+                    val request = TtsRequestId.parseCloud(utteranceId) ?: return
                     mainHandler.post {
                         if (request.first != generation || request.second != synthesizingIndex || stopping) {
                             return@post
@@ -713,7 +713,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun synthesizeSystem(item: SpeechItem, file: File) {
-        val utteranceId = requestId(generation, item.sentenceGlobalIndex)
+        val utteranceId = TtsRequestId.cloud(generation, item.sentenceGlobalIndex)
         tts.setSpeechRate(preferencesStore.playbackSpeed())
         val result = tts.synthesizeToFile(item.text, Bundle(), file, utteranceId)
         Log.d(TAG, "synthesizeSystem utterance=$utteranceId result=$result textLength=${item.text.length} file=${file.absolutePath}")
@@ -923,24 +923,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     private fun canStartCurrentProvider(): Boolean =
         _state.value.provider != Provider.SYSTEM || initialized
-
-    private fun requestId(generation: Int, sentenceIndex: Int): String =
-        "$generation:$sentenceIndex"
-
-    private fun systemRequestId(generation: Int, sentenceIndex: Int): String =
-        "system:$generation:$sentenceIndex"
-
-    private fun parseRequest(utteranceId: String?): Pair<Int, Int>? {
-        val parts = utteranceId?.split(":") ?: return null
-        if (parts.size != 2) return null
-        return Pair(parts[0].toIntOrNull() ?: return null, parts[1].toIntOrNull() ?: return null)
-    }
-
-    private fun parseSystemRequest(utteranceId: String?): Pair<Int, Int>? {
-        val parts = utteranceId?.split(":") ?: return null
-        if (parts.size != 3 || parts[0] != "system") return null
-        return Pair(parts[1].toIntOrNull() ?: return null, parts[2].toIntOrNull() ?: return null)
-    }
 
     private fun fail(message: String) {
         Log.e(TAG, "fail: $message")
