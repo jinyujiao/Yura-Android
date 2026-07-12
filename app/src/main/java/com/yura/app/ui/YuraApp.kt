@@ -98,6 +98,7 @@ import com.yura.app.reader.ReaderPreferencesStore
 import com.yura.app.reader.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
+import com.yura.app.ui.shelf.LibraryTopBar
 import com.yura.app.ui.shelf.ShelfSort
 import com.yura.app.ui.shelf.ShelfBookFilter
 import com.yura.app.sync.WebDavSettings
@@ -185,125 +186,43 @@ fun YuraApp() {
             }
         },
         topBar = {
-            TopAppBar(
-                title = {
-                    if (tab == RootTab.Library) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                text = "Yura",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Black,
-                            )
-                            if (searchExpanded) {
-                                Surface(
-                                    shape = RoundedCornerShape(999.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    OutlinedTextField(
-                                        value = searchQuery,
-                                        onValueChange = { searchQuery = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        placeholder = {
-                                            Text(
-                                                text = "搜索书名或作者",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        },
-                                        textStyle = MaterialTheme.typography.bodyMedium,
-                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color.Transparent,
-                                            unfocusedBorderColor = Color.Transparent,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
-                    } else {
+            if (tab == RootTab.Library) {
+                LibraryTopBar(
+                    searchExpanded = searchExpanded,
+                    searchQuery = searchQuery,
+                    onSearchExpandedChange = { searchExpanded = it },
+                    onSearchQueryChange = { searchQuery = it },
+                    sort = shelfSort,
+                    sortMenuVisible = sortMenuVisible,
+                    onSortMenuVisibleChange = { sortMenuVisible = it },
+                    onSortChange = { shelfSort = it },
+                    importing = libraryState.isImporting,
+                    onImport = {
+                        importLauncher.launch(arrayOf(
+                            "application/epub+zip",
+                            "text/plain",
+                            "application/octet-stream",
+                            "application/zip",
+                        ))
+                    },
+                    modifier = Modifier.statusBarsPadding(),
+                )
+            } else {
+                TopAppBar(
+                    title = {
                         Text(
                             text = tab.label,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Black,
                         )
-                    }
-                },
-                actions = {
-                    if (tab == RootTab.Library) {
-                        CompactToolbarButton(
-                            symbol = if (searchExpanded) "×" else "⌕",
-                            onClick = {
-                                searchExpanded = !searchExpanded
-                                if (!searchExpanded) searchQuery = ""
-                            },
-                        )
-                        Box {
-                            CompactSortButton(onClick = { sortMenuVisible = true })
-                            DropdownMenu(
-                                expanded = sortMenuVisible,
-                                onDismissRequest = { sortMenuVisible = false },
-                                shape = RoundedCornerShape(24.dp),
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
-                                tonalElevation = 8.dp,
-                                shadowElevation = 14.dp,
-                                modifier = Modifier.width(176.dp),
-                            ) {
-                                Text(
-                                    text = "书架排序",
-                                    modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                                ShelfSort.entries.forEach { option ->
-                                    val selected = shelfSort == option
-                                    DropdownMenuItem(
-                                        text = {
-                                            Surface(
-                                                shape = RoundedCornerShape(999.dp),
-                                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                            ) {
-                                                Text(
-                                                    text = option.label,
-                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
-                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            shelfSort = option
-                                            sortMenuVisible = false
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                        }
-                        ImportButton(
-                            importing = libraryState.isImporting,
-                            onClick = {
-                                importLauncher.launch(arrayOf(
-                                    "application/epub+zip",
-                                    "text/plain",
-                                    "application/octet-stream",
-                                    "application/zip",
-                                ))
-                            },
-                        )
-                    }
-                },                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-                modifier = Modifier.statusBarsPadding(),
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                    ),
+                    modifier = Modifier.statusBarsPadding(),
+                )
+            }
         },
     ) { padding ->
         Box(
@@ -360,37 +279,6 @@ fun YuraApp() {
                     .padding(bottom = 8.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun ImportButton(
-    importing: Boolean,
-    onClick: () -> Unit,
-) {
-    CompactToolbarButton(symbol = if (importing) "…" else "+", onClick = onClick, enabled = !importing)
-}
-
-@Composable
-private fun CompactSortButton(
-    onClick: () -> Unit,
-) {
-    CompactToolbarButton(symbol = "≡", onClick = onClick)
-}
-
-@Composable
-private fun CompactToolbarButton(
-    symbol: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
-        Text(
-            text = symbol,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Black,
-            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
