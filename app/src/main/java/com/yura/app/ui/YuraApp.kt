@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -74,6 +75,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -211,7 +213,7 @@ fun YuraApp() {
                             },
                         )
                         Box {
-                            CompactToolbarButton(symbol = "↕", onClick = { sortMenuVisible = true })
+                            CompactSortButton(onClick = { sortMenuVisible = true })
                             DropdownMenu(
                                 expanded = sortMenuVisible,
                                 onDismissRequest = { sortMenuVisible = false },
@@ -323,6 +325,21 @@ private fun ImportButton(
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+    }
+}
+
+@Composable
+private fun CompactSortButton(
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+        Canvas(modifier = Modifier.size(24.dp)) {
+            val color = MaterialTheme.colorScheme.primary
+            val centerY = size.height / 2f
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY - 7.dp.toPx()), end = androidx.compose.ui.geometry.Offset(21.dp.toPx(), centerY - 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY), end = androidx.compose.ui.geometry.Offset(16.dp.toPx(), centerY), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY + 7.dp.toPx()), end = androidx.compose.ui.geometry.Offset(11.dp.toPx(), centerY + 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         }
     }
 }
