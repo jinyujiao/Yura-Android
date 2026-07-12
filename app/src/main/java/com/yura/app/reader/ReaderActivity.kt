@@ -821,60 +821,28 @@ class ReaderActivity : FragmentActivity() {
         data: ReaderState.Ready,
         onPageChanged: (Int, Int, Locator) -> Unit,
     ) {
-        val fragmentFactory = data.navigatorFactory.createFragmentFactory(
-            initialLocator = data.initialLocator,
-            initialPreferences = data.initialPreferences,
-            configuration = EpubNavigatorFragment.Configuration(),
-            paginationListener = object : EpubNavigatorFragment.PaginationListener {
-                override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
-                    onPageChanged(pageIndex, totalPages, locator)
-                    applyMediaIndentFix(activeReaderPreferences)
-                    val progressionJson = locator.toJSON().toString()
-                    if (progressionJson != lastSavedProgressionJson) {
-                        lastSavedProgressionJson = progressionJson
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            dao.saveProgression(data.book.id, progressionJson, System.currentTimeMillis())
-                        }
+        navigatorFragment = ReaderNavigatorInstaller.install(
+            activity = this,
+            containerId = containerId,
+            data = data,
+            tag = NAVIGATOR_TAG,
+            onPageChanged = { pageIndex, totalPages, locator ->
+                onPageChanged(pageIndex, totalPages, locator)
+                applyMediaIndentFix(activeReaderPreferences)
+                val progressionJson = locator.toJSON().toString()
+                if (progressionJson != lastSavedProgressionJson) {
+                    lastSavedProgressionJson = progressionJson
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        dao.saveProgression(data.book.id, progressionJson, System.currentTimeMillis())
                     }
                 }
             },
+            onCenterTap = {
+                lifecycleScope.launch {
+                    showControlsCallback?.invoke()
+                }
+            },
         )
-
-        supportFragmentManager.fragmentFactory = fragmentFactory
-        supportFragmentManager.commitNow {
-            replace(containerId, EpubNavigatorFragment::class.java, Bundle(), NAVIGATOR_TAG)
-        }
-
-        navigatorFragment = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as? EpubNavigatorFragment
-        navigatorFragment?.let { navigator ->
-            navigator.addInputListener(
-                object : InputListener {
-                    private val delegate = DirectionalNavigationAdapter(
-                        navigator = navigator,
-                        tapEdges = setOf(DirectionalNavigationAdapter.TapEdge.Horizontal),
-                        animatedTransition = true,
-                    )
-
-                    override fun onTap(event: TapEvent): Boolean {
-                        return delegate.onTap(event)
-                    }
-                },
-            )
-            navigator.addInputListener(
-                object : InputListener {
-                    override fun onTap(event: TapEvent): Boolean {
-                        val width = navigator.publicationView.width
-                        val centerZone = width * 0.3f
-                        if (kotlin.math.abs(event.point.x - width / 2f) < centerZone) {
-                            lifecycleScope.launch {
-                                showControlsCallback?.invoke()
-                            }
-                        }
-                        return false
-                    }
-                },
-            )
-        }
         applyMediaIndentFix(data.initialPreferences)
     }
 
