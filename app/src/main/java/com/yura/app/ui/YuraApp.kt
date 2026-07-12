@@ -334,8 +334,8 @@ private fun CompactSortButton(
     onClick: () -> Unit,
 ) {
     IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+        val color = MaterialTheme.colorScheme.primary
         Canvas(modifier = Modifier.size(24.dp)) {
-            val color = MaterialTheme.colorScheme.primary
             val centerY = size.height / 2f
             drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY - 7.dp.toPx()), end = androidx.compose.ui.geometry.Offset(21.dp.toPx(), centerY - 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
             drawLine(color, start = androidx.compose.ui.geometry.Offset(3.dp.toPx(), centerY), end = androidx.compose.ui.geometry.Offset(16.dp.toPx(), centerY), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
@@ -566,7 +566,19 @@ private fun LibraryScreen(
                 onClick = {
                     if (selectedBookIds.isEmpty()) onOpenReader(book) else selectedBookIds = selectedBookIds.toggle(book.id)
                 },
-                onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
+                onStartSelection = { selectedBookIds = selectedBookIds.toggle(book.id) },
+                onChangeCover = {
+                    onChangeCover(book)
+                    selectedBookIds = emptySet()
+                },
+                onRemoveFromDevice = {
+                    selectedBookIds = setOf(book.id)
+                    deleteAction = ShelfDeleteAction.RemoveFromDevice
+                },
+                onDeleteEverywhere = {
+                    selectedBookIds = setOf(book.id)
+                    deleteAction = ShelfDeleteAction.DeleteEverywhere
+                },
             )
         }
     }
@@ -640,14 +652,49 @@ private fun ShelfBookCard(
     book: Book,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onStartSelection: () -> Unit,
+    onChangeCover: () -> Unit,
+    onRemoveFromDevice: () -> Unit,
+    onDeleteEverywhere: () -> Unit,
 ) {
+    var actionMenuVisible by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
     val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
 
+    if (actionMenuVisible) {
+        AlertDialog(
+            onDismissRequest = { actionMenuVisible = false },
+            title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            text = { Text("选择要对这本书执行的操作") },
+            confirmButton = {
+                TextButton(onClick = {
+                    actionMenuVisible = false
+                    onChangeCover()
+                }) { Text("更换封面") }
+            },
+            dismissButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        actionMenuVisible = false
+                        onStartSelection()
+                    }) { Text("多选") }
+                    TextButton(onClick = {
+                        actionMenuVisible = false
+                        onRemoveFromDevice()
+                    }) { Text("移除本机") }
+                    TextButton(onClick = {
+                        actionMenuVisible = false
+                        onDeleteEverywhere()
+                    }) { Text("所有设备删除") }
+                    TextButton(onClick = { actionMenuVisible = false }) { Text("取消") }
+                }
+            },
+        )
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false; shadowElevation = 0f }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(onClick = onClick, onLongClick = { actionMenuVisible = true }),
     ) {
         Box {
             Surface(
