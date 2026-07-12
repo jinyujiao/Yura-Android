@@ -28,9 +28,7 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
-        <activity
-            android:name=".reader.ReaderActivity"
-            android:screenOrientation="portrait" />
+        <activity android:name=".reader.ReaderActivity" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

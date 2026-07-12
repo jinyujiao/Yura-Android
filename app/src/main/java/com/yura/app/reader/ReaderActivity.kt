@@ -91,6 +91,7 @@ import com.yura.app.data.YuraDatabase
 import com.yura.app.library.ReadiumServices
 import com.yura.app.reader.tts.SimpleTtsController
 import com.yura.app.ui.theme.YuraTheme
+import com.yura.app.util.applyDeviceOrientationPolicy
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -136,6 +137,7 @@ class ReaderActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyDeviceOrientationPolicy()
         enableEdgeToEdge()
 
         val bookId = intent.getLongExtra(EXTRA_BOOK_ID, -1L)
