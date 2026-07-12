@@ -259,14 +259,40 @@ fun YuraApp() {
                             DropdownMenu(
                                 expanded = sortMenuVisible,
                                 onDismissRequest = { sortMenuVisible = false },
+                                shape = RoundedCornerShape(24.dp),
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
+                                tonalElevation = 8.dp,
+                                shadowElevation = 14.dp,
+                                modifier = Modifier.width(176.dp),
                             ) {
+                                Text(
+                                    text = "书架排序",
+                                    modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
                                 ShelfSort.entries.forEach { option ->
+                                    val selected = shelfSort == option
                                     DropdownMenuItem(
-                                        text = { Text(option.label) },
+                                        text = {
+                                            Surface(
+                                                shape = RoundedCornerShape(999.dp),
+                                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            ) {
+                                                Text(
+                                                    text = option.label,
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
+                                                )
+                                            }
+                                        },
                                         onClick = {
                                             shelfSort = option
                                             sortMenuVisible = false
                                         },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                     )
                                 }
                             }
