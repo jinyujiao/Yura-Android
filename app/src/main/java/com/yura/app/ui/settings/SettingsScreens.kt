@@ -376,207 +376,7 @@ private fun ReadingSettingsPage(
 }
 
 @Composable
-private fun CleanTtsSettingsPage(controller: SimpleTtsController) {
-    val uiState by controller.state.collectAsState()
-    var providerMenuOpen by remember { mutableStateOf(false) }
-    var mimoVoiceMenuOpen by remember { mutableStateOf(false) }
-    var microsoftVoiceMenuOpen by remember { mutableStateOf(false) }
-    var mimoKey by remember { mutableStateOf(controller.currentMimoApiKey()) }
-    var microsoftKey by remember { mutableStateOf(controller.currentMicrosoftApiKey()) }
-    var microsoftRegion by remember(uiState.microsoftRegion) { mutableStateOf(uiState.microsoftRegion) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            SettingsGroup(title = "\u8bed\u97f3\u670d\u52a1") {
-                SettingDropdownRow(
-                    title = "\u9ed8\u8ba4\u670d\u52a1",
-                    value = uiState.provider.label,
-                    expanded = providerMenuOpen,
-                    onExpandedChange = { providerMenuOpen = it },
-                ) {
-                    SimpleTtsController.Provider.entries.forEach { provider ->
-                        DropdownMenuItem(
-                            text = { Text(provider.label) },
-                            onClick = {
-                                controller.selectProvider(provider)
-                                providerMenuOpen = false
-                            },
-                        )
-                    }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                when (uiState.provider) {
-                    SimpleTtsController.Provider.SYSTEM -> {
-                        SettingTextRow("\u7cfb\u7edf\u6717\u8bfb", uiState.engineName.ifBlank { "\u7cfb\u7edf\u9ed8\u8ba4\u6717\u8bfb\u5f15\u64ce" })
-                    }
-                    SimpleTtsController.Provider.MIMO -> {
-                        SettingDropdownRow(
-                            title = "MiMo \u97f3\u8272",
-                            value = uiState.mimoVoice,
-                            expanded = mimoVoiceMenuOpen,
-                            onExpandedChange = { mimoVoiceMenuOpen = it },
-                        ) {
-                            SimpleTtsController.MIMO_VOICES.forEach { voice ->
-                                DropdownMenuItem(
-                                    text = { Text(voice) },
-                                    onClick = {
-                                        controller.setMimoVoice(voice)
-                                        mimoVoiceMenuOpen = false
-                                    },
-                                )
-                            }
-                        }
-                        SettingsTextField(
-                            value = mimoKey,
-                            onValueChange = {
-                                mimoKey = it
-                                controller.setMimoApiKey(it)
-                            },
-                            label = "MiMo API Key",
-                            placeholder = if (uiState.hasMimoApiKey) "\u5df2\u4fdd\u5b58\uff0c\u8f93\u5165\u65b0 key \u53ef\u8986\u76d6" else "\u8bf7\u8f93\u5165 MiMo API key",
-                            password = true,
-                        )
-                    }
-                    SimpleTtsController.Provider.MICROSOFT -> {
-                        val selectedMicrosoftVoice = uiState.microsoftVoices
-                            .firstOrNull { it.shortName == uiState.microsoftVoice }
-                            ?.displayName
-                            ?: uiState.microsoftVoice
-                        SettingDropdownRow(
-                            title = "Microsoft \u97f3\u8272",
-                            value = selectedMicrosoftVoice,
-                            expanded = microsoftVoiceMenuOpen,
-                            onExpandedChange = { microsoftVoiceMenuOpen = it },
-                        ) {
-                            uiState.microsoftVoices.forEach { voice ->
-                                DropdownMenuItem(
-                                    text = { Text(voice.displayName) },
-                                    onClick = {
-                                        controller.setMicrosoftVoice(voice.shortName)
-                                        microsoftVoiceMenuOpen = false
-                                    },
-                                )
-                            }
-                        }
-                        SettingsTextField(
-                            value = microsoftRegion,
-                            onValueChange = {
-                                microsoftRegion = it
-                                controller.setMicrosoftRegion(it)
-                            },
-                            label = "Azure Region",
-                            placeholder = "\u4f8b\u5982 eastasia / japaneast",
-                        )
-                        SettingsTextField(
-                            value = microsoftKey,
-                            onValueChange = {
-                                microsoftKey = it
-                                controller.setMicrosoftApiKey(it)
-                            },
-                            label = "Azure Speech Key",
-                            placeholder = if (uiState.hasMicrosoftApiKey) "\u5df2\u4fdd\u5b58\uff0c\u8f93\u5165\u65b0 key \u53ef\u8986\u76d6" else "\u8bf7\u8f93\u5165 Azure Speech key",
-                            password = true,
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Button(
-                                enabled = !uiState.microsoftVoicesLoading,
-                                onClick = { controller.refreshMicrosoftVoices() },
-                            ) {
-                                Text(if (uiState.microsoftVoicesLoading) "\u5237\u65b0\u4e2d" else "\u5237\u65b0\u97f3\u8272")
-                            }
-                            Text(
-                                text = "\u5df2\u52a0\u8f7d ${uiState.microsoftVoices.size} \u4e2a\u97f3\u8272",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            SettingsGroup(title = "\u6d4b\u8bd5") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Button(onClick = { controller.testVoice() }) {
-                            Text(if (uiState.state == SimpleTtsController.State.LOADING) "\u51c6\u5907\u4e2d" else "\u6d4b\u8bd5\u8bed\u97f3")
-                        }
-                        TextButton(onClick = { controller.stop() }) {
-                            Text("\u505c\u6b62")
-                        }
-                    }
-                    Text(
-                        text = when {
-                            uiState.errorMessage != null -> uiState.errorMessage.orEmpty()
-                            uiState.state == SimpleTtsController.State.PLAYING -> "\u6b63\u5728\u64ad\u653e\uff1a${uiState.currentSentence}"
-                            uiState.state == SimpleTtsController.State.LOADING -> "\u6b63\u5728\u51c6\u5907\u97f3\u9891..."
-                            uiState.state == SimpleTtsController.State.PAUSED -> "\u5df2\u6682\u505c"
-                            else -> "\u5f53\u524d\u670d\u52a1\uff1a${uiState.provider.label}\u3002\u70b9\u51fb\u6d4b\u8bd5\u8bed\u97f3\u540e\u5e94\u8be5\u542c\u5230\u58f0\u97f3\u6216\u770b\u5230\u9519\u8bef\u4fe1\u606f\u3002"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (uiState.errorMessage != null) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsEntryRow(title: String, subtitle: String, icon: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(icon, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("\u203a", style = MaterialTheme.typography.titleLarge)
-        }
-    }
-}
-
-@Composable
-private fun AppPreferenceSlider(
+fun AppPreferenceSlider(
     title: String,
     valueLabel: String,
     value: Float,
@@ -631,7 +431,7 @@ fun AppPreferenceSwitch(
 }
 
 @Composable
-private fun AppPreferenceChoice(
+fun AppPreferenceChoice(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -653,14 +453,14 @@ private fun AppPreferenceChoice(
     }
 }
 
-private data class PreferenceOption(
+data class PreferenceOption(
     val text: String,
     val selected: Boolean,
     val onClick: () -> Unit,
 )
 
 @Composable
-private fun AppPreferenceChoiceRow(choices: List<PreferenceOption>) {
+fun AppPreferenceChoiceRow(choices: List<PreferenceOption>) {
     Row(
         modifier = Modifier.padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -675,7 +475,7 @@ private fun AppPreferenceChoiceRow(choices: List<PreferenceOption>) {
     }
 }
 
-private fun roundToStep(value: Float, step: Float): Double =
+fun roundToStep(value: Float, step: Float): Double =
     (kotlin.math.round(value / step) * step).toDouble()
 
 @Composable
@@ -699,7 +499,7 @@ fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun SettingDropdownRow(
+fun SettingDropdownRow(
     title: String,
     value: String,
     expanded: Boolean,
@@ -722,7 +522,7 @@ private fun SettingDropdownRow(
 }
 
 @Composable
-private fun SettingTextRow(title: String, value: String, onClick: (() -> Unit)? = null) {
+fun SettingTextRow(title: String, value: String, onClick: (() -> Unit)? = null) {
     val rowContent: @Composable () -> Unit = {
         Row(
             modifier = Modifier
@@ -763,7 +563,7 @@ fun SettingsTextField(
 }
 
 @Composable
-private fun SettingsInfoCard(text: String) {
+fun SettingsInfoCard(text: String) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         shape = RoundedCornerShape(24.dp),
