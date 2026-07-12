@@ -5,6 +5,7 @@ package com.yura.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -103,6 +104,17 @@ import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Spread
 import org.readium.r2.navigator.preferences.Theme
 
+private enum class ShelfSort(val label: String) {
+    RecentlyRead("最近阅读"),
+    RecentlyImported("最近导入"),
+    Title("书名"),
+}
+
+private enum class ShelfDeleteAction {
+    RemoveFromDevice,
+    DeleteEverywhere,
+}
+
 private enum class RootTab(val label: String, val icon: String) {
     Library("\u4e66\u67b6", "\u2302"),
     Settings("\u8bbe\u7f6e", "\u2699"),
@@ -118,6 +130,10 @@ fun YuraApp() {
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+    var searchExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var shelfSort by remember { mutableStateOf(ShelfSort.RecentlyRead) }
+    var sortMenuVisible by remember { mutableStateOf(false) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -142,6 +158,14 @@ fun YuraApp() {
         }
     }
 
+    BackHandler(enabled = tab == RootTab.Library && sortMenuVisible) {
+        sortMenuVisible = false
+    }
+    BackHandler(enabled = tab == RootTab.Library && searchExpanded && !sortMenuVisible) {
+        searchExpanded = false
+        searchQuery = ""
+    }
+
     DisposableEffect(Unit) {
         onDispose { ttsController.shutdown() }
     }
@@ -162,30 +186,60 @@ fun YuraApp() {
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = if (tab == RootTab.Library) "Yura" else tab.label,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
-                    )
-                },
-                actions = {
+                    if (tab == RootTab.Library && searchExpanded) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("搜索书名或作者") },
+                        )
+                    } else {
+                        Text(
+                            text = if (tab == RootTab.Library) "Yura" else tab.label,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                },                actions = {
                     if (tab == RootTab.Library) {
+                        CompactToolbarButton(
+                            symbol = if (searchExpanded) "×" else "⌕",
+                            onClick = {
+                                searchExpanded = !searchExpanded
+                                if (!searchExpanded) searchQuery = ""
+                            },
+                        )
+                        Box {
+                            CompactToolbarButton(symbol = "↕", onClick = { sortMenuVisible = true })
+                            DropdownMenu(
+                                expanded = sortMenuVisible,
+                                onDismissRequest = { sortMenuVisible = false },
+                            ) {
+                                ShelfSort.entries.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.label) },
+                                        onClick = {
+                                            shelfSort = option
+                                            sortMenuVisible = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
                         ImportButton(
                             importing = libraryState.isImporting,
                             onClick = {
-                                importLauncher.launch(
-                                    arrayOf(
-                                        "application/epub+zip",
-                                        "text/plain",
-                                        "application/octet-stream",
-                                        "application/zip",
-                                    ),
-                                )
+                                importLauncher.launch(arrayOf(
+                                    "application/epub+zip",
+                                    "text/plain",
+                                    "application/octet-stream",
+                                    "application/zip",
+                                ))
                             },
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
+                },                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
                 ),
@@ -218,10 +272,13 @@ fun YuraApp() {
                     when (item) {
                         RootTab.Library -> LibraryScreen(
                             state = libraryState,
+                            query = searchQuery,
+                            sort = shelfSort,
                             onOpenReader = { book ->
                                 context.startActivity(ReaderActivity.intent(context, book.id))
                             },
-                            onDeleteBook = libraryViewModel::deleteBook,
+                            onRemoveFromDevice = { books -> books.forEach(libraryViewModel::removeLocalBook) },
+                            onDeleteEverywhere = { books -> books.forEach(libraryViewModel::deleteBookEverywhere) },
                             onChangeCover = { book ->
                                 coverTargetBook = book
                                 coverLauncher.launch(arrayOf("image/*"))
@@ -270,6 +327,20 @@ private fun ImportButton(
     }
 }
 
+@Composable
+private fun CompactToolbarButton(
+    symbol: String,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+        Text(
+            text = symbol,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
 @Composable
 private fun FloatingPillNavigation(
     selected: RootTab,
@@ -387,70 +458,138 @@ private fun YuraSnackbar(data: SnackbarData) {
 @Composable
 private fun LibraryScreen(
     state: LibraryUiState,
+    query: String,
+    sort: ShelfSort,
     onOpenReader: (Book) -> Unit,
-    onDeleteBook: (Book) -> Unit,
+    onRemoveFromDevice: (List<Book>) -> Unit,
+    onDeleteEverywhere: (List<Book>) -> Unit,
     onChangeCover: (Book) -> Unit,
 ) {
+    var selectedBookIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var deleteAction by remember { mutableStateOf<ShelfDeleteAction?>(null) }
+    val selectedBooks = remember(state.books, selectedBookIds) { state.books.filter { it.id in selectedBookIds } }
+    val filteredBooks = remember(state.books, query) {
+        val normalizedQuery = query.trim()
+        if (normalizedQuery.isEmpty()) state.books else state.books.filter { book ->
+            book.title.contains(normalizedQuery, ignoreCase = true) || book.author.contains(normalizedQuery, ignoreCase = true)
+        }
+    }
+    val sortedBooks = remember(filteredBooks, sort) {
+        when (sort) {
+            ShelfSort.RecentlyRead -> filteredBooks.sortedByDescending(Book::lastReadDate)
+            ShelfSort.RecentlyImported -> filteredBooks.sortedByDescending(Book::creationDate)
+            ShelfSort.Title -> filteredBooks.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        }
+    }
+
+    BackHandler(enabled = selectedBookIds.isNotEmpty()) { selectedBookIds = emptySet() }
+
+    deleteAction?.let { action ->
+        val removeFromDevice = action == ShelfDeleteAction.RemoveFromDevice
+        AlertDialog(
+            onDismissRequest = { deleteAction = null },
+            title = { Text(if (removeFromDevice) "移除本机书籍" else "删除所有设备上的书") },
+            text = {
+                Text(if (removeFromDevice) "确定从本机移除 ${selectedBooks.size} 本书吗？远端和其他设备上的副本会保留。" else "确定从所有设备删除 ${selectedBooks.size} 本书吗？下次同步会删除远端副本。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (removeFromDevice) onRemoveFromDevice(selectedBooks) else onDeleteEverywhere(selectedBooks)
+                    selectedBookIds = emptySet()
+                    deleteAction = null
+                }) { Text(if (removeFromDevice) "移除本机" else "删除") }
+            },
+            dismissButton = { TextButton(onClick = { deleteAction = null }) { Text("取消") } },
+        )
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(start = 26.dp, top = 18.dp, end = 26.dp, bottom = 116.dp),
         horizontalArrangement = Arrangement.spacedBy(28.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
-        if (state.isImporting) {
+        if (selectedBooks.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                ImportStatusBanner()
+                ShelfSelectionBar(
+                    selectedCount = selectedBooks.size,
+                    canChangeCover = selectedBooks.size == 1,
+                    onChangeCover = {
+                        selectedBooks.singleOrNull()?.let(onChangeCover)
+                        selectedBookIds = emptySet()
+                    },
+                    onRemoveFromDevice = { deleteAction = ShelfDeleteAction.RemoveFromDevice },
+                    onDeleteEverywhere = { deleteAction = ShelfDeleteAction.DeleteEverywhere },
+                    onCancel = { selectedBookIds = emptySet() },
+                )
             }
         }
+        if (state.isImporting) item(span = { GridItemSpan(maxLineSpan) }) { ImportStatusBanner() }
         if (state.isLoading) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp,
-                    )
+                Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
                 }
             }
         } else if (state.books.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibraryCard() }
+        } else if (sortedBooks.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.height(180.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            "\u4e66\u67b6\u8fd8\u662f\u7a7a\u7684",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            "\u70b9\u51fb\u53f3\u4e0a\u89d2 + \u5bfc\u5165\u672c\u5730 EPUB\u3002",
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
+                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(150.dp)) {
+                    Box(modifier = Modifier.padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("没有符合条件的书籍", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
-
-        items(state.books, key = { it.id }) { book ->
+        items(sortedBooks, key = { it.id }) { book ->
             ShelfBookCard(
                 book = book,
-                onClick = { onOpenReader(book) },
-                onDelete = { onDeleteBook(book) },
-                onChangeCover = { onChangeCover(book) },
+                selected = book.id in selectedBookIds,
+                onClick = {
+                    if (selectedBookIds.isEmpty()) onOpenReader(book) else selectedBookIds = selectedBookIds.toggle(book.id)
+                },
+                onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
             )
         }
     }
 }
+
+@Composable
+private fun ShelfSelectionBar(
+    selectedCount: Int,
+    canChangeCover: Boolean,
+    onChangeCover: () -> Unit,
+    onRemoveFromDevice: () -> Unit,
+    onDeleteEverywhere: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = onChangeCover, enabled = canChangeCover, label = { Text("更换封面") })
+                AssistChip(onClick = onCancel, label = { Text("取消选择") })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = onRemoveFromDevice, label = { Text("移除本机") })
+                AssistChip(onClick = onDeleteEverywhere, label = { Text("所有设备删除") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyLibraryCard() {
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(180.dp)) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Text("书架还是空的", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("点击右上角 + 导入本地 EPUB。", color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
+
+private fun Set<Long>.toggle(bookId: Long): Set<Long> = if (bookId in this) this - bookId else this + bookId
 
 @Composable
 private fun ImportStatusBanner() {
@@ -482,148 +621,52 @@ private fun ImportStatusBanner() {
 @Composable
 private fun ShelfBookCard(
     book: Book,
+    selected: Boolean,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
-    onChangeCover: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
-    var confirmDelete by remember { mutableStateOf(false) }
-    var actionMenuVisible by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
     val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
 
-    if (actionMenuVisible) {
-        AlertDialog(
-            onDismissRequest = { actionMenuVisible = false },
-            title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            text = { Text("选择要对这本书执行的操作") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        actionMenuVisible = false
-                        onChangeCover()
-                    },
-                ) {
-                    Text("更换封面")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { actionMenuVisible = false }) {
-                        Text("取消")
-                    }
-                    TextButton(
-                        onClick = {
-                            actionMenuVisible = false
-                            confirmDelete = true
-                        },
-                    ) {
-                        Text("删除")
-                    }
-                }
-            },
-        )
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("\u5220\u9664\u4e66\u7c4d") },
-            text = { Text("\u786e\u5b9a\u8981\u5220\u9664\u300a${book.title}\u300b\u5417\uff1f") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDelete = false
-                        onDelete()
-                    },
-                ) {
-                    Text("删除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) {
-                    Text("取消")
-                }
-            },
-        )
-    }
-
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                clip = false
-                shadowElevation = 0f
-            }
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { actionMenuVisible = true },
-            ),
+        modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false; shadowElevation = 0f }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.68f),
-        ) {
-            AsyncImage(
-                model = File(book.cover),
-                contentDescription = book.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(18.dp)),
-            )
+        Box {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+                shadowElevation = 8.dp,
+                border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.68f),
+            ) {
+                AsyncImage(
+                    model = File(book.cover),
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
+                )
+            }
+            if (selected) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
+                ) { Box(contentAlignment = Alignment.Center) { Text("✓", fontWeight = FontWeight.Black) } }
+            }
         }
-
         Spacer(Modifier.height(11.dp))
-        Text(
-            book.title,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
+        Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                book.author.ifBlank { "\u672a\u77e5\u4f5c\u8005" },
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                progress,
-                maxLines = 1,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(book.author.ifBlank { "未知作者" }, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(progress, maxLines = 1, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.height(8.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progressFraction)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.86f)),
-            )
+        Box(modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f))) {
+            Box(modifier = Modifier.fillMaxWidth(progressFraction).height(3.dp).clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.86f)))
         }
     }
 }
