@@ -658,6 +658,7 @@ private fun ShelfBookCard(
     onDeleteEverywhere: () -> Unit,
 ) {
     var actionMenuVisible by remember { mutableStateOf(false) }
+    var confirmDeleteEverywhere by remember { mutableStateOf(false) }
     val progress = remember(book.progression) { bookProgressLabel(book.progression) }
     val progressFraction = remember(book.progression) { bookProgressFraction(book.progression) }
 
@@ -667,26 +668,59 @@ private fun ShelfBookCard(
             title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = { Text("选择要对这本书执行的操作") },
             confirmButton = {
-                TextButton(onClick = {
-                    actionMenuVisible = false
-                    onChangeCover()
-                }) { Text("更换封面") }
+                TextButton(
+                    onClick = {
+                        actionMenuVisible = false
+                        onChangeCover()
+                    },
+                ) {
+                    Text("更换封面")
+                }
             },
             dismissButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = {
-                        actionMenuVisible = false
-                        onStartSelection()
-                    }) { Text("多选") }
-                    TextButton(onClick = {
-                        actionMenuVisible = false
-                        onRemoveFromDevice()
-                    }) { Text("移除本机") }
-                    TextButton(onClick = {
-                        actionMenuVisible = false
+                Row {
+                    TextButton(onClick = { actionMenuVisible = false }) {
+                        Text("取消")
+                    }
+                    TextButton(
+                        onClick = {
+                            actionMenuVisible = false
+                            onRemoveFromDevice()
+                        },
+                    ) {
+                        Text("移除本机")
+                    }
+                    TextButton(
+                        onClick = {
+                            actionMenuVisible = false
+                            confirmDeleteEverywhere = true
+                        },
+                    ) {
+                        Text("全设备删除")
+                    }
+                }
+            },
+        )
+    }
+
+    if (confirmDeleteEverywhere) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteEverywhere = false },
+            title = { Text("删除所有设备上的书") },
+            text = { Text("《${book.title}》会从所有已同步设备移除，并阻止再次下载。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDeleteEverywhere = false
                         onDeleteEverywhere()
-                    }) { Text("所有设备删除") }
-                    TextButton(onClick = { actionMenuVisible = false }) { Text("取消") }
+                    },
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteEverywhere = false }) {
+                    Text("取消")
                 }
             },
         )
