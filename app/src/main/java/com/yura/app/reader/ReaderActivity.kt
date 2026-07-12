@@ -428,20 +428,6 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
-    private fun cleanTtsTextForSync(text: String): String {
-        val cleaned = text
-            .replace(Regex("[“”\"‘’']\\s*(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}[“”\"‘’']"), " ")
-            .replace(Regex("(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}"), " ")
-            .replace(Regex("[—–-]{2,}"), " ")
-            .replace(Regex("[~～_＿=＝*＊#＃]{2,}"), " ")
-            .replace(Regex("[“”\"‘’']\\s+[“”\"‘’']"), " ")
-            .replace(Regex("([。！？!?，,、；;：:])\\1+"), "$1")
-            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
-    }
-
     private fun startTtsFromTaggedPage(startParagraphOverride: Int? = null) {
         if (activeTtsReadingOrderIndex < 0) {
             activeTtsReadingOrderIndex = currentReadingOrderIndex()
@@ -538,7 +524,7 @@ class ReaderActivity : FragmentActivity() {
             val firstVisibleRaw = payload?.optInt("firstVisible", 0) ?: 0
             val paragraphs = mutableListOf<String>()
             rawParagraphs.forEach { rawText ->
-                val cleaned = cleanTtsTextForSync(rawText)
+                val cleaned = ReaderTtsParagraphParser.clean(rawText)
                 if (cleaned.isNotBlank()) {
                     paragraphs += cleaned
                 }
@@ -773,22 +759,7 @@ class ReaderActivity : FragmentActivity() {
         if (bytes.isEmpty()) return emptyList()
         val html = runCatching { bytes.toString(Charsets.UTF_8) }
             .getOrDefault(bytes.toString(Charsets.ISO_8859_1))
-        val document = Jsoup.parse(html, link.href.toString())
-        document.select("script, style, nav[epub|type=toc], nav, aside, audio, video").remove()
-        val nodes = document.select("p, h1, h2, h3, h4, h5, h6, li, blockquote")
-        val paragraphs = nodes
-            .map { cleanTtsTextForSync(it.text()) }
-            .filter { it.length >= 2 }
-        val fallbackText = document.body()?.text()?.takeIf { it.isNotBlank() }
-            ?: html.replace(Regex("<[^>]+>"), " ")
-        val fallback = fallbackText
-            .split(Regex("(?<=[。！？!?])\\s*|\\n+"))
-            .map { cleanTtsTextForSync(it) }
-            .filter { it.length >= 2 }
-        return paragraphs.ifEmpty {
-            fallback.ifEmpty { listOf(cleanTtsTextForSync(fallbackText)) }
-                .filter { it.length >= 2 }
-        }
+        return ReaderTtsParagraphParser.parse(html, link.href.toString())
     }
 
     private fun findWebView(view: View): WebView? {
