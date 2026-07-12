@@ -156,7 +156,15 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var mediaArtworkUri: Uri? = null
     private var mediaArtworkData: ByteArray? = null
     private var playbackWakeLock: PowerManager.WakeLock? = null
-    private var sleepTimerRunnable: Runnable? = null
+    private val sleepTimer = TtsSleepTimer {
+        stop()
+        _state.update {
+            it.copy(
+                sleepTimerMinutes = 0,
+                errorMessage = "Sleep timer stopped playback.",
+            )
+        }
+    }
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) pause()
@@ -419,20 +427,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun setSleepTimer(minutes: Int) {
-        sleepTimerRunnable?.let(mainHandler::removeCallbacks)
-        val safeMinutes = minutes.coerceAtLeast(0)
-        if (safeMinutes == 0) {
-            sleepTimerRunnable = null
-            _state.update { it.copy(sleepTimerMinutes = 0) }
-            return
-        }
-        val timer = Runnable {
-            stop()
-            _state.update { it.copy(sleepTimerMinutes = 0, errorMessage = "Sleep timer stopped playback.") }
-        }
-        sleepTimerRunnable = timer
-        mainHandler.postDelayed(timer, safeMinutes * 60_000L)
-        _state.update { it.copy(sleepTimerMinutes = safeMinutes) }
+        val scheduledMinutes = sleepTimer.schedule(minutes)
+        _state.update { it.copy(sleepTimerMinutes = scheduledMinutes) }
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -638,6 +634,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun shutdown() {
         stop()
+        sleepTimer.cancel()
         executor.shutdownNow()
         releaseMediaControls()
         player.release()
