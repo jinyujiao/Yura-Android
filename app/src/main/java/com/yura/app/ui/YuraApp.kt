@@ -97,6 +97,7 @@ import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
 import com.yura.app.reader.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
+import com.yura.app.ui.shelf.ShelfBookFilter
 import com.yura.app.sync.WebDavSettings
 import com.yura.app.sync.WebDavSettingsStore
 import com.yura.app.sync.WebDavSyncWorker
@@ -117,6 +118,9 @@ private enum class ShelfSort(val label: String) {
     RecentlyImported("最近导入"),
     Title("书名"),
 }
+
+private fun ShelfSort.toCoreSort(): com.yura.app.ui.shelf.ShelfSort =
+    com.yura.app.ui.shelf.ShelfSort.valueOf(name)
 
 private enum class ShelfDeleteAction {
     RemoveFromDevice,
@@ -495,18 +499,8 @@ private fun LibraryScreen(
     var selectedBookIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var deleteAction by remember { mutableStateOf<ShelfDeleteAction?>(null) }
     val selectedBooks = remember(state.books, selectedBookIds) { state.books.filter { it.id in selectedBookIds } }
-    val filteredBooks = remember(state.books, query) {
-        val normalizedQuery = query.trim()
-        if (normalizedQuery.isEmpty()) state.books else state.books.filter { book ->
-            book.title.contains(normalizedQuery, ignoreCase = true) || book.author.contains(normalizedQuery, ignoreCase = true)
-        }
-    }
-    val sortedBooks = remember(filteredBooks, sort) {
-        when (sort) {
-            ShelfSort.RecentlyRead -> filteredBooks.sortedByDescending(Book::lastReadDate)
-            ShelfSort.RecentlyImported -> filteredBooks.sortedByDescending(Book::creationDate)
-            ShelfSort.Title -> filteredBooks.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
-        }
+    val sortedBooks = remember(state.books, query, sort) {
+        ShelfBookFilter.filterAndSort(state.books, query, sort.toCoreSort())
     }
 
     BackHandler(enabled = selectedBookIds.isNotEmpty()) { selectedBookIds = emptySet() }

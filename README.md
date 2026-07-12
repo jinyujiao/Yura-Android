@@ -51,6 +51,15 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
 
+
+### Testing, CI, and releases
+
+- Run app unit tests with `./gradlew :app:testDebugUnitTest` (PowerShell: `./gradlew.bat :app:testDebugUnitTest`).
+- The repository includes an Android instrumentation test for the Room 3→4 migration; run it from a connected device or emulator with `./gradlew :app:connectedDebugAndroidTest`.
+- GitHub Actions runs app unit tests and `:app:assembleDebug` for pushes and pull requests targeting `main`.
+- Release builds enable R8 and resource shrinking. Supply signing values outside the repository through Gradle properties: `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD`.
+- Use `APP_VERSION_NAME` and `APP_VERSION_CODE` to override release version metadata; CI also uses `GITHUB_RUN_NUMBER` as a fallback build number.
+
 ### Project structure
 
 ```text
@@ -130,6 +139,15 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 ```
 
 生成的调试 APK 位于 `app/build/outputs/apk/debug/`。
+
+
+### 测试、CI 与发布
+
+- App 单元测试：`./gradlew :app:testDebugUnitTest`（PowerShell 使用 `./gradlew.bat :app:testDebugUnitTest`）。
+- 仓库包含 Room 3→4 数据库迁移的 Android 仪器测试；连接真机或模拟器后运行 `./gradlew :app:connectedDebugAndroidTest`。
+- GitHub Actions 会在推送或向 `main` 发起 Pull Request 时运行 App 单元测试和 `:app:assembleDebug`。
+- Release 构建已启用 R8 与资源压缩。签名信息必须通过仓库外的 Gradle 属性提供：`RELEASE_STORE_FILE`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS`、`RELEASE_KEY_PASSWORD`。
+- 可用 `APP_VERSION_NAME`、`APP_VERSION_CODE` 覆盖版本号；CI 会以 `GITHUB_RUN_NUMBER` 作为构建号后备值。
 
 ### 目录结构
 

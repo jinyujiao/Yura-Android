@@ -64,9 +64,17 @@ class LibraryRepository(
                         ?: importedFile.sha256
                     val title = publication.metadata.title ?: sourceDisplayName ?: publicationFile.nameWithoutExtension
                     val author = txtAuthor.ifBlank { publication.metadata.authorName() }
-                    val duplicate = dao.bookByIdentifier(duplicateIdentifier)
-                        ?: dao.bookByTitleAndAuthor(title, author)
-                    duplicate?.let {
+                    val duplicateByIdentifier = dao.bookByIdentifier(duplicateIdentifier)
+                    val duplicateByMetadata = if (duplicateByIdentifier == null) {
+                        dao.bookByTitleAndAuthor(title, author)
+                    } else {
+                        null
+                    }
+                    if (BookImportRules.isDuplicate(
+                            hasMatchingIdentifier = duplicateByIdentifier != null,
+                            hasMatchingTitleAndAuthor = duplicateByMetadata != null,
+                        )
+                    ) {
                         publicationFile.delete()
                         error("这本书已经在书架里了")
                     }
@@ -99,8 +107,12 @@ class LibraryRepository(
         dao.deleteBookmarksForBook(book.id)
         dao.deleteBook(book.id)
         withContext(Dispatchers.IO) {
-            runCatching { book.href.toOwnedLocalFile()?.delete() }
-            runCatching { book.cover.toOwnedLocalFile()?.delete() }
+            runCatching {
+                LocalBookFileCleaner.deleteOwnedFiles(
+                    book.href.toOwnedLocalFile(),
+                    book.cover.toOwnedLocalFile(),
+                )
+            }
         }
     }
 

@@ -13,8 +13,10 @@ android {
         applicationId = "com.yura.app"
         minSdk = (property("android.minSdk") as String).toInt()
         targetSdk = (property("android.targetSdk") as String).toInt()
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toIntOrNull()
+            ?: System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+            ?: 1
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orNull ?: "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -22,6 +24,36 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
         isCoreLibraryDesugaringEnabled = true
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = providers.gradleProperty("RELEASE_STORE_FILE").orNull
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
+                keyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
+                keyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (!providers.gradleProperty("RELEASE_STORE_FILE").orNull.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     buildFeatures {
@@ -55,6 +87,13 @@ dependencies {
     implementation(libs.bundles.media3)
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.junit)
+
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
     implementation(project(":readium:readium-shared"))
     implementation(project(":readium:readium-streamer"))

@@ -144,18 +144,11 @@ class WebDavClient {
     }
 
     private fun WebDavSettings.fullRemoteUrl(): String {
-        val base = serverUrl.trim().trimEnd('/')
-        val parsedBase = URI(base)
-        require(parsedBase.scheme.equals("https", ignoreCase = true)) {
-            "WebDAV 地址必须使用 HTTPS，以保护账号和同步数据。"
-        }
-        val path = remotePath.trim().ifBlank { "/" }
-        val normalizedPath = if (path.startsWith("/")) path else "/$path"
-        return URI("$base$normalizedPath").normalize().toString()
+        return WebDavUrlResolver.remoteDirectoryUrl(serverUrl, remotePath)
     }
 
     private fun WebDavSettings.fileUrl(fileName: String): String =
-        "${fullRemoteUrl().trimEnd('/')}/$fileName"
+        WebDavUrlResolver.fileUrl(serverUrl, remotePath, fileName)
 
     private fun WebDavSettings.requestBuilder(url: String): Request.Builder =
         Request.Builder().url(url).apply {

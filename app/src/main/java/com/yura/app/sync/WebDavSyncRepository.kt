@@ -151,7 +151,7 @@ class WebDavSyncRepository(context: Context) {
         snapshot.books.forEach { remote ->
             if (remote.identifier in deletedIdentifiers) return@forEach
             val local = booksByIdentifier[remote.identifier] ?: return@forEach
-            if (remote.lastReadDate > local.lastReadDate && remote.progression.isNotBlank()) {
+            if (SyncProgressMergePolicy.shouldApplyRemoteProgress(remote.lastReadDate, remote.progression, local.lastReadDate)) {
                 dao.saveProgression(local.id, remote.progression, remote.lastReadDate)
                 progressCount++
             }

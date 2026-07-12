@@ -50,7 +50,7 @@ abstract class YuraDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS deleted_books (identifier TEXT NOT NULL, deleted_at INTEGER NOT NULL, PRIMARY KEY(identifier))")
             }
