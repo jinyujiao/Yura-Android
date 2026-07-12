@@ -1016,17 +1016,6 @@ class ReaderActivity : FragmentActivity() {
     }
 
 
-    private sealed interface ReaderState {
-        data object Loading : ReaderState
-        data class Error(val message: String) : ReaderState
-        data class Ready(
-            val book: Book,
-            val publication: Publication,
-            val initialLocator: Locator?,
-            val initialPreferences: EpubPreferences,
-            val navigatorFactory: EpubNavigatorFactory,
-        ) : ReaderState
-    }
 
     private fun loadReaderPreferences(): EpubPreferences = ReaderPreferencesStore.load(this)
 
