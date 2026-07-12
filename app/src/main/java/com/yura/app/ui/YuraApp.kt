@@ -608,8 +608,17 @@ private fun ShelfSelectionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            TextButton(onClick = onCancel) {
-                Text("取消选择", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Surface(
+                onClick = onCancel,
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
+            ) {
+                Text(
+                    "取消选择",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
         Row(
@@ -629,9 +638,19 @@ private fun ShelfActionButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
-    TextButton(onClick = onClick, enabled = enabled) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(999.dp),
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f)
+        },
+    ) {
         Text(
             text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             fontWeight = FontWeight.Bold,
             color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
