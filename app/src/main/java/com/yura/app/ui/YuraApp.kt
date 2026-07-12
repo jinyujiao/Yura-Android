@@ -194,22 +194,47 @@ fun YuraApp() {
         topBar = {
             TopAppBar(
                 title = {
-                    if (tab == RootTab.Library && searchExpanded) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
+                    if (tab == RootTab.Library) {
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("搜索书名或作者") },
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                text = "Yura",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Black,
+                            )
+                            if (searchExpanded) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    OutlinedTextField(
+                                        value = searchQuery,
+                                        onValueChange = { searchQuery = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        placeholder = { Text("搜索书名或作者") },
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color.Transparent,
+                                            unfocusedBorderColor = Color.Transparent,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         Text(
-                            text = if (tab == RootTab.Library) "Yura" else tab.label,
+                            text = tab.label,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Black,
                         )
                     }
-                },                actions = {
+                },
+                actions = {
                     if (tab == RootTab.Library) {
                         CompactToolbarButton(
                             symbol = if (searchExpanded) "×" else "⌕",
@@ -337,7 +362,7 @@ private fun CompactToolbarButton(
         Text(
             text = symbol,
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Black,
             color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -579,7 +604,7 @@ private fun ShelfSelectionBar(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("已选择 $selectedCount 本书", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
