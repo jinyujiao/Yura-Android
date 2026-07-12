@@ -6,7 +6,6 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.StatFs
 import com.yura.app.data.Book
-import com.yura.app.data.DeletedBook
 import com.yura.app.data.YuraDao
 import java.io.File
 import java.io.FileOutputStream
@@ -28,6 +27,8 @@ class LibraryRepository(
     private val dao: YuraDao,
     private val readium: ReadiumServices,
 ) {
+    private val deletionService = BookDeletionService(context, dao)
+
     val books: Flow<List<Book>> = dao.books()
 
     suspend fun importPublication(uri: Uri): Result<Unit> =
@@ -103,23 +104,9 @@ class LibraryRepository(
             }
         }
 
-    suspend fun removeLocalBook(book: Book) {
-        dao.deleteBookmarksForBook(book.id)
-        dao.deleteBook(book.id)
-        withContext(Dispatchers.IO) {
-            runCatching {
-                LocalBookFileCleaner.deleteOwnedFiles(
-                    book.href.toOwnedLocalFile(),
-                    book.cover.toOwnedLocalFile(),
-                )
-            }
-        }
-    }
+    suspend fun removeLocalBook(book: Book) = deletionService.removeLocal(book)
 
-    suspend fun deleteBookEverywhere(book: Book) {
-        dao.upsertDeletedBook(DeletedBook(book.identifier, System.currentTimeMillis()))
-        removeLocalBook(book)
-    }
+    suspend fun deleteBookEverywhere(book: Book) = deletionService.deleteEverywhere(book)
 
     suspend fun changeCover(book: Book, uri: Uri): Result<Unit> =
         withContext(Dispatchers.IO) {
