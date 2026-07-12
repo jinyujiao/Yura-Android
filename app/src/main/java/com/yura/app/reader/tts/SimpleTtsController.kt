@@ -1,13 +1,9 @@
 package com.yura.app.reader.tts
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -113,27 +109,18 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private lateinit var tts: TextToSpeech
     private val player = ExoPlayer.Builder(appContext).build()
     private val mediaSessionId = "yura-tts-${System.identityHashCode(this)}"
+    private val mediaSessionManager = TtsMediaSessionManager(
+        context = appContext,
+        player = player,
+        sessionId = mediaSessionId,
+        onPrevious = { mainHandler.post(::previous) },
+        onNext = { mainHandler.post(::next) },
+        onStop = { mainHandler.post(::stop) },
+    )
     private val paragraphs = mutableListOf<String>()
     private val speechItems = mutableListOf<SpeechItem>()
     private val prefetchingIndices = mutableSetOf<Int>()
     private val prefetchedIndices = mutableSetOf<Int>()
-    private var mediaServiceBinder: MediaService.Binder? = null
-    private var mediaServiceBound = false
-    private var mediaServiceConnecting = false
-    private val mediaServiceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            mediaServiceBinder = service as? MediaService.Binder
-            mediaServiceBound = mediaServiceBinder != null
-            mediaServiceConnecting = false
-            registerTtsSession()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            mediaServiceBinder = null
-            mediaServiceBound = false
-            mediaServiceConnecting = false
-        }
-    }
     private var initialized = false
     private var pendingParagraphIndex: Int? = null
     private var activeParagraphIndex = -1
@@ -627,46 +614,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    private fun ensureMediaControls() {
-        if (mediaServiceBound) {
-            registerTtsSession()
-            return
-        }
-        if (mediaServiceConnecting) return
+    private fun ensureMediaControls() = mediaSessionManager.ensure()
 
-        mediaServiceConnecting = true
-        val intent = Intent(MediaService.SERVICE_INTERFACE)
-            .setClass(appContext, MediaService::class.java)
-        runCatching { appContext.startService(intent) }
-        runCatching {
-            mediaServiceBound = appContext.bindService(intent, mediaServiceConnection, Context.BIND_AUTO_CREATE)
-            if (!mediaServiceBound) {
-                mediaServiceConnecting = false
-            }
-        }.onFailure {
-            mediaServiceConnecting = false
-        }
-    }
-
-    private fun registerTtsSession() {
-        mediaServiceBinder?.openTtsSession(
-            player = player,
-            sessionId = mediaSessionId,
-            onPrevious = { mainHandler.post { previous() } },
-            onNext = { mainHandler.post { next() } },
-            onStop = { mainHandler.post { stop() } },
-        )
-    }
-
-    private fun releaseMediaControls() {
-        mediaServiceBinder?.closeTtsSession()
-        if (mediaServiceBound) {
-            runCatching { appContext.unbindService(mediaServiceConnection) }
-        }
-        mediaServiceBinder = null
-        mediaServiceBound = false
-        mediaServiceConnecting = false
-    }
+    private fun releaseMediaControls() = mediaSessionManager.release()
 
     private fun playFromParagraph(paragraphIndex: Int, resetPlayer: Boolean = true) {
         val item = speechItems.firstOrNull { it.paragraphIndex >= paragraphIndex } ?: return
