@@ -121,6 +121,7 @@ import org.readium.r2.shared.util.getOrElse
 class ReaderActivity : FragmentActivity() {
     private val dao by lazy { YuraDatabase.get(this).yuraDao() }
     private val readium by lazy { ReadiumServices(this) }
+    private val bookLoader by lazy { ReaderBookLoader(dao, readium) }
 
     private var asset: Asset? = null
     private var publication: Publication? = null
@@ -835,41 +836,14 @@ class ReaderActivity : FragmentActivity() {
         )
     }
 
-    private suspend fun openBook(bookId: Long, initialPreferences: EpubPreferences): ReaderState =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val book = dao.book(bookId) ?: error("\u627e\u4e0d\u5230\u8fd9\u672c\u4e66")
-                dao.markBookRead(bookId, System.currentTimeMillis())
-                val openedAsset = readium.assetRetriever.retrieve(book.url, book.mediaType)
-                    .getOrElse { error("无法读取图书：${it.message}") }
-                val openedPublication = readium.publicationOpener.open(
-                    openedAsset,
-                    allowUserInteraction = true,
-                ).getOrElse { error("\u65e0\u6cd5\u6253\u5f00\u56fe\u4e66\uff1a${it.message}") }
-
-                if (!openedPublication.conformsTo(Publication.Profile.EPUB) &&
-                    !openedPublication.readingOrder.allAreHtml
-                ) {
-                    openedPublication.close()
-                    openedAsset.close()
-                    error("\u5f53\u524d\u9605\u8bfb\u5668\u53ea\u652f\u6301 EPUB")
-                }
-
-                asset = openedAsset
-                publication = openedPublication
-                ReaderState.Ready(
-                    book = book,
-                    publication = openedPublication,
-                    initialLocator = book.progression
-                        .takeUnless { it.isBlank() || it == "{}" }
-                        ?.let { Locator.fromJSON(JSONObject(it)) },
-                    initialPreferences = initialPreferences,
-                    navigatorFactory = EpubNavigatorFactory(openedPublication),
-                )
-            }.getOrElse {
-                ReaderState.Error(it.message ?: "\u6253\u5f00\u56fe\u4e66\u5931\u8d25")
-            }
+    private suspend fun openBook(bookId: Long, initialPreferences: EpubPreferences): ReaderState {
+        val state = bookLoader.open(bookId, initialPreferences)
+        if (state is ReaderState.Ready) {
+            asset = state.asset
+            publication = state.publication
         }
+        return state
+    }
 
     private fun setupNavigatorFragment(
         containerId: Int,

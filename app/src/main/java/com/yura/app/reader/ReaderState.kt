@@ -5,6 +5,7 @@ import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.asset.Asset
 
 sealed interface ReaderState {
     data object Loading : ReaderState
@@ -15,5 +16,6 @@ sealed interface ReaderState {
         val initialLocator: Locator?,
         val initialPreferences: EpubPreferences,
         val navigatorFactory: EpubNavigatorFactory,
+        val asset: Asset,
     ) : ReaderState
 }
