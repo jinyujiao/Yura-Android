@@ -29,6 +29,21 @@ interface YuraDao {
     @Query("DELETE FROM ${Book.TABLE_NAME} WHERE ${Book.ID} = :id")
     suspend fun deleteBook(id: Long)
 
+    @Query("DELETE FROM ${Book.TABLE_NAME} WHERE ${Book.IDENTIFIER} = :identifier")
+    suspend fun deleteBookByIdentifier(identifier: String)
+
+    @Query("SELECT * FROM ${DeletedBook.TABLE_NAME}")
+    suspend fun deletedBooks(): List<DeletedBook>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDeletedBook(deletedBook: DeletedBook)
+
+    @Query("DELETE FROM ${DeletedBook.TABLE_NAME} WHERE ${DeletedBook.IDENTIFIER} = :identifier")
+    suspend fun clearDeletedBook(identifier: String)
+
+    @Query("DELETE FROM ${DeletedBook.TABLE_NAME} WHERE ${DeletedBook.DELETED_AT} < :before")
+    suspend fun deleteExpiredTombstones(before: Long)
+
     @Query("DELETE FROM ${Bookmark.TABLE_NAME} WHERE ${Bookmark.BOOK_ID} = :bookId")
     suspend fun deleteBookmarksForBook(bookId: Long)
 

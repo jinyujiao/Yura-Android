@@ -1,8 +1,10 @@
-﻿package com.yura.app.reader.tts
+package com.yura.app.reader.tts
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -29,6 +31,7 @@ import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 import com.yura.app.reader.MediaService
+import com.yura.app.security.SecureSettings
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -81,6 +84,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val hasMimoApiKey: Boolean = false,
         val hasMicrosoftApiKey: Boolean = false,
         val playbackSpeed: Float = DEFAULT_PLAYBACK_SPEED,
+        val sleepTimerMinutes: Int = 0,
         val errorMessage: String? = null,
     )
 
@@ -152,6 +156,13 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var mediaArtworkUri: Uri? = null
     private var mediaArtworkData: ByteArray? = null
     private var playbackWakeLock: PowerManager.WakeLock? = null
+    private var sleepTimerRunnable: Runnable? = null
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) pause()
+        }
+    }
+    private var noisyReceiverRegistered = false
 
     var onParagraphChanged: ((Int) -> Unit)? = null
     var onQueueEnded: (() -> Unit)? = null
@@ -201,6 +212,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             }
         )
         installTtsListener()
+        appContext.registerReceiver(noisyReceiver, IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        noisyReceiverRegistered = true
     }
 
     private fun createSystemTts(engine: String? = null) {
@@ -326,7 +339,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun setMimoApiKey(value: String) {
         val trimmed = value.trim()
-        prefs.edit { putString(KEY_MIMO_API_KEY, trimmed) }
+        SecureSettings.putString(appContext, KEY_MIMO_API_KEY, trimmed)
         _state.update { it.copy(hasMimoApiKey = trimmed.isNotBlank()) }
     }
 
@@ -344,7 +357,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun setMicrosoftApiKey(value: String) {
         val trimmed = value.trim()
-        prefs.edit { putString(KEY_MICROSOFT_API_KEY, trimmed) }
+        SecureSettings.putString(appContext, KEY_MICROSOFT_API_KEY, trimmed)
         _state.update { it.copy(hasMicrosoftApiKey = trimmed.isNotBlank()) }
     }
 
@@ -403,6 +416,23 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 }
             }
         }
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerRunnable?.let(mainHandler::removeCallbacks)
+        val safeMinutes = minutes.coerceAtLeast(0)
+        if (safeMinutes == 0) {
+            sleepTimerRunnable = null
+            _state.update { it.copy(sleepTimerMinutes = 0) }
+            return
+        }
+        val timer = Runnable {
+            stop()
+            _state.update { it.copy(sleepTimerMinutes = 0, errorMessage = "Sleep timer stopped playback.") }
+        }
+        sleepTimerRunnable = timer
+        mainHandler.postDelayed(timer, safeMinutes * 60_000L)
+        _state.update { it.copy(sleepTimerMinutes = safeMinutes) }
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -571,6 +601,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         tts.stop()
         player.stop()
         player.clearMediaItems()
+        if (noisyReceiverRegistered) {
+            runCatching { appContext.unregisterReceiver(noisyReceiver) }
+            noisyReceiverRegistered = false
+        }
         releaseMediaControls()
         stopping = false
         cleanAudioFiles()
@@ -1289,6 +1323,16 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     private fun fail(message: String) {
         Log.e(TAG, "fail: $message")
+        if (_state.value.provider != Provider.SYSTEM && initialized && speechItems.isNotEmpty()) {
+            val resumeAt = currentSentenceIndex.coerceAtLeast(0)
+            mainHandler.post {
+                prefs.edit { putString(KEY_PROVIDER, Provider.SYSTEM.name) }
+                player.stop()
+                _state.update { it.copy(provider = Provider.SYSTEM, errorMessage = "Cloud TTS failed; switched to system TTS.") }
+                playFromSentence(resumeAt)
+            }
+            return
+        }
         mainHandler.post {
             releasePlaybackWakeLock()
             tts.stop()
@@ -1370,7 +1414,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         prefs.getString(KEY_MIMO_VOICE, DEFAULT_MIMO_VOICE).orEmpty().ifBlank { DEFAULT_MIMO_VOICE }
 
     private fun savedMimoApiKey(): String =
-        prefs.getString(KEY_MIMO_API_KEY, "").orEmpty()
+        SecureSettings.migrateString(appContext, TTS_PREFS_NAME, KEY_MIMO_API_KEY)
 
     private fun savedMicrosoftVoice(): String =
         prefs.getString(KEY_MICROSOFT_VOICE, DEFAULT_MICROSOFT_VOICE).orEmpty().ifBlank { DEFAULT_MICROSOFT_VOICE }
@@ -1395,7 +1439,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         prefs.getString(KEY_MICROSOFT_REGION, "").orEmpty()
 
     private fun savedMicrosoftApiKey(): String =
-        prefs.getString(KEY_MICROSOFT_API_KEY, "").orEmpty()
+        SecureSettings.migrateString(appContext, TTS_PREFS_NAME, KEY_MICROSOFT_API_KEY)
 
     private fun savedPlaybackSpeed(): Float {
         val saved = prefs.getFloat(KEY_PLAYBACK_SPEED, DEFAULT_PLAYBACK_SPEED)
@@ -1428,6 +1472,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
+        private const val TTS_PREFS_NAME = "reader-tts"
         private const val KEY_PROVIDER = "provider"
         private const val KEY_MIMO_VOICE = "mimo_voice"
         private const val KEY_MIMO_API_KEY = "mimo_api_key"

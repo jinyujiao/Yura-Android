@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.os.StatFs
 import com.yura.app.data.Book
+import com.yura.app.data.DeletedBook
 import com.yura.app.data.YuraDao
 import java.io.File
 import java.io.FileOutputStream
@@ -31,6 +33,7 @@ class LibraryRepository(
     suspend fun importPublication(uri: Uri): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                validateImportSize(uri)
                 val importedFile = copyToLibrary(uri)
                 val sourceDisplayName = displayName(uri)
                 var txtAuthor = ""
@@ -70,6 +73,7 @@ class LibraryRepository(
 
                     val now = Clock.System.now().toEpochMilliseconds()
                     val coverFile = storeCover(publication)
+                    dao.clearDeletedBook(duplicateIdentifier)
                     dao.insertBook(
                         Book(
                             creationDate = now,
@@ -91,13 +95,18 @@ class LibraryRepository(
             }
         }
 
-    suspend fun deleteBook(book: Book) {
+    suspend fun removeLocalBook(book: Book) {
         dao.deleteBookmarksForBook(book.id)
         dao.deleteBook(book.id)
         withContext(Dispatchers.IO) {
             runCatching { book.href.toOwnedLocalFile()?.delete() }
             runCatching { book.cover.toOwnedLocalFile()?.delete() }
         }
+    }
+
+    suspend fun deleteBookEverywhere(book: Book) {
+        dao.upsertDeletedBook(DeletedBook(book.identifier, System.currentTimeMillis()))
+        removeLocalBook(book)
     }
 
     suspend fun changeCover(book: Book, uri: Uri): Result<Unit> =
@@ -119,21 +128,28 @@ class LibraryRepository(
                 ?: "epub"
             val target = File(dir, "${UUID.randomUUID()}.$extension")
             val digest = MessageDigest.getInstance("SHA-256")
-            context.contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "无法读取所选文件" }
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        digest.update(buffer, 0, read)
-                        output.write(buffer, 0, read)
+            try {
+                context.contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "无法读取所选文件。" }
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var copiedBytes = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            copiedBytes += read
+                            require(copiedBytes <= MAX_IMPORT_BYTES) { "文件超过 512 MB 导入上限。" }
+                            digest.update(buffer, 0, read)
+                            output.write(buffer, 0, read)
+                        }
                     }
                 }
+                ImportedFile(target, digest.digest().toHexString())
+            } catch (error: Throwable) {
+                target.delete()
+                throw error
             }
-            ImportedFile(target, digest.digest().toHexString())
         }
-
     private suspend fun storeCover(publication: Publication): File =
         withContext(Dispatchers.IO) {
             val dir = File(context.filesDir, "covers").apply { mkdirs() }
@@ -164,6 +180,15 @@ class LibraryRepository(
         return file
     }
 
+    private fun validateImportSize(uri: Uri) {
+        val declaredSize = context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else -1L }
+            ?: -1L
+        require(declaredSize <= MAX_IMPORT_BYTES || declaredSize < 0) { "文件超过 512 MB 导入上限。" }
+        val availableBytes = StatFs(context.filesDir.path).availableBytes
+        val requiredBytes = (declaredSize.takeIf { it > 0 } ?: MIN_FREE_SPACE_BYTES) + MIN_FREE_SPACE_BYTES
+        require(availableBytes >= requiredBytes) { "设备可用空间不足，请至少保留 128 MB 后重试。" }
+    }
     private fun displayName(uri: Uri): String? =
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor ->
@@ -203,6 +228,11 @@ class LibraryRepository(
         val appRoot = context.filesDir.canonicalFile
         val target = file.canonicalFile
         return target.takeIf { it.path.startsWith(appRoot.path) && it.exists() && it.isFile }
+    }
+
+    private companion object {
+        const val MAX_IMPORT_BYTES = 512L * 1024 * 1024
+        const val MIN_FREE_SPACE_BYTES = 128L * 1024 * 1024
     }
 
     private data class ImportedFile(

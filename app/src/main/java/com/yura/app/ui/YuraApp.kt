@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,6 +66,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -84,6 +86,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.work.WorkManager
+import androidx.work.WorkInfo
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
@@ -95,10 +99,12 @@ import com.yura.app.reader.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
 import com.yura.app.sync.WebDavSettings
 import com.yura.app.sync.WebDavSettingsStore
+import com.yura.app.sync.WebDavSyncWorker
 import com.yura.app.sync.WebDavSyncRepository
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -536,8 +542,10 @@ private fun LibraryScreen(
             )
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val shelfColumns = if (maxWidth >= 840.dp) 4 else if (maxWidth >= 600.dp) 3 else 2
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(shelfColumns),
             contentPadding = PaddingValues(start = 26.dp, top = 18.dp, end = 26.dp, bottom = 116.dp),
             horizontalArrangement = Arrangement.spacedBy(28.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
@@ -571,6 +579,7 @@ private fun LibraryScreen(
                 )
             }
             }
+        }
     }
 }
 
@@ -1252,11 +1261,26 @@ private fun WebDavSettingsPage() {
     val scope = rememberCoroutineScope()
     var settings by remember { mutableStateOf(WebDavSettingsStore.load(context)) }
     var testing by remember { mutableStateOf(false) }
-    var syncing by remember { mutableStateOf(false) }
     var testMessage by remember { mutableStateOf<String?>(null) }
     var testOk by remember { mutableStateOf(false) }
-    var syncMessage by remember { mutableStateOf<String?>(null) }
-    var syncOk by remember { mutableStateOf(false) }
+    val workInfo by produceState<WorkInfo?>(initialValue = null, context) {
+        while (true) {
+            value = WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWork(WebDavSyncWorker.WORK_NAME)
+                .get()
+                .firstOrNull()
+            delay(750)
+        }
+    }
+    val syncing = workInfo?.state == WorkInfo.State.RUNNING || workInfo?.state == WorkInfo.State.ENQUEUED
+    val syncMessage = when (workInfo?.state) {
+        WorkInfo.State.RUNNING -> "正在后台同步…"
+        WorkInfo.State.ENQUEUED -> "等待网络后自动同步…"
+        WorkInfo.State.FAILED -> "同步失败：${workInfo?.outputData?.getString(WebDavSyncWorker.KEY_ERROR) ?: "请重试"}"
+        WorkInfo.State.SUCCEEDED -> "同步完成"
+        else -> null
+    }
+    val syncOk = workInfo?.state == WorkInfo.State.SUCCEEDED
     var lastSyncAt by remember { mutableStateOf(WebDavSettingsStore.lastSyncAt(context)) }
 
     fun update(updated: WebDavSettings) {
@@ -1283,30 +1307,12 @@ private fun WebDavSettingsPage() {
                     ) {
                         Button(
                             enabled = !syncing,
-                            onClick = {
-                                syncing = true
-                                syncMessage = null
-                                scope.launch {
-                                    val result = WebDavSyncRepository(context).sync()
-                                    syncing = false
-                                    syncOk = result.isSuccess
-                                    if (result.isSuccess) {
-                                        lastSyncAt = System.currentTimeMillis()
-                                        WebDavSettingsStore.saveLastSyncAt(context, lastSyncAt)
-                                    }
-                                    syncMessage = result.fold(
-                                        onSuccess = {
-                                            "\u540c\u6b65\u5b8c\u6210\uff1a\u4e0a\u4f20\u4e66\u7c4d ${it.uploadedBooks}\uff0c\u4e0b\u8f7d\u4e66\u7c4d ${it.downloadedBooks}\uff0c\u8fdb\u5ea6\u5408\u5e76 ${it.mergedProgress}"
-                                        },
-                                        onFailure = { it.message ?: "\u540c\u6b65\u5931\u8d25" },
-                                    )
-                                }
-                            },
+                            onClick = { WebDavSyncWorker.enqueue(context) },
                         ) {
-                            Text(if (syncing) "\u540c\u6b65\u4e2d" else "\u7acb\u5373\u540c\u6b65")
+                            Text(if (syncing) "同步中" else "立即同步")
                         }
                         Text(
-                            text = syncMessage ?: "\u540c\u6b65\u4e66\u7c4d\u6587\u4ef6\u548c\u9605\u8bfb\u8fdb\u5ea6\uff0c\u4e0d\u4f1a\u5220\u9664\u672c\u5730\u6570\u636e\u3002",
+                            text = syncMessage ?: "同步书籍文件和阅读进度，不会删除本地数据。",
                             color = when {
                                 syncMessage == null -> MaterialTheme.colorScheme.onSurfaceVariant
                                 syncOk -> MaterialTheme.colorScheme.primary
@@ -1315,6 +1321,9 @@ private fun WebDavSettingsPage() {
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.weight(1f),
                         )
+                    }
+                    if (workInfo?.state == WorkInfo.State.FAILED) {
+                        TextButton(onClick = { WebDavSyncWorker.enqueue(context) }) { Text("重试") }
                     }
                     Text(
                         text = if (lastSyncAt > 0L) {

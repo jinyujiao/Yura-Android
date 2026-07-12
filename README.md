@@ -1,36 +1,153 @@
 # Yura Android
 
-Clean Android rebuild of Yura on top of Readium Kotlin Toolkit.
+[English](#english) · [中文](#中文)
 
-## Structure
+<a id="english"></a>
 
-- `app/`: Yura application code. New Compose + Material 3 UI lives here.
-- `readium/`: Readium Kotlin Toolkit source modules, kept as library code.
-- `buildSrc/`, `gradle/`: Gradle infrastructure copied from the Readium project so the toolkit modules build unchanged.
+## English
 
-## Product Scope
+**Yura** is a local-first Android reading app for EPUB and TXT books. It combines a clean Jetpack Compose interface with the [Readium Kotlin Toolkit](https://github.com/readium/kotlin-toolkit) for EPUB rendering, reading preferences, navigation, bookmarks, and reading locations.
 
-The new app keeps the core Yura features:
+### Features
 
-- Local EPUB import and bookshelf.
-- EPUB reading through Readium navigator.
-- Custom reader chrome and reader settings.
-- TTS with system, MiMo, and Microsoft providers.
-- Paragraph highlighting and TTS/media control synchronization.
-- App settings, reader settings, TTS settings, About, and reserved WebDAV settings.
+- **Local library** — import EPUB and TXT files, automatically convert TXT to EPUB for a consistent reading experience, keep books in app-private storage, and restore the most recent reading position.
+- **Bookshelf management** — display book metadata and progress, replace a cover image, and remove a book together with its local files and bookmarks.
+- **Flexible reader** — chapter navigation, table of contents, bookmarks, progress tracking, and saved reading locations.
+- **Reading preferences** — light, dark, sepia, or follow-system themes; adjustable font size, line height, paragraph indentation and spacing, letter spacing, scrolling/paginated reading, publisher styles, and one/two-column layouts.
+- **Read aloud (TTS)** — Android system TTS plus optional Xiaomi MiMo and Microsoft Azure Speech voices. Playback supports pause/resume, speed selection, background media controls, automatic next-chapter reading, and paragraph highlighting.
+- **WebDAV sync** — manually upload/download library files, cover images, and reading progress. Sync merges progress and does not delete local data.
+- **Adaptive orientation** — phones use portrait orientation; tablets (minimum width `600dp`) may rotate freely.
 
-The old Readium test app layers are intentionally not copied:
+### Getting started
 
-- OPDS/catalog online reading.
-- Demo reader fragments and XML navigation.
-- Unused PDF/audio/image reader surfaces.
-- Old test-app TTS controls.
+1. Install and open Yura on an Android device.
+2. Tap **+** on the Library screen and select an EPUB or TXT file.
+3. Select a book to read. Tap the reading area to reveal reader controls.
+4. Open **Settings** to configure reading, TTS, or WebDAV sync.
 
-## Migration Order
+### TTS and WebDAV notes
 
-1. Wire local EPUB import and persistent bookshelf.
-2. Embed `EpubNavigatorFragment` in the new reader shell.
-3. Move Readium reader preferences into a clean settings bridge.
-4. Port TTS engines and media session control.
-5. Add paragraph extraction, text cleaning, highlighting, and auto-next-chapter.
-6. Clean package names, resources, and old compatibility code.
+- Android system TTS works with voice engines installed on the device.
+- MiMo and Microsoft Azure TTS require credentials entered in **TTS Settings**. These services use the network and may incur provider charges.
+- WebDAV requires a server URL, username, password, and remote path. Sync is manual and keeps local books intact.
+- Credentials are encrypted on-device with Android Keystore. Do not share screenshots or backups containing your access keys or passwords.
+
+### Build from source
+
+#### Requirements
+
+- Android Studio with its bundled JDK 21
+- Android SDK Platform 36
+- Android device or emulator running Android 6.0 (API 23) or later
+
+#### Build
+
+```powershell
+# Windows PowerShell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+.\gradlew.bat :app:assembleDebug
+```
+
+The debug APK is generated under `app/build/outputs/apk/debug/`.
+
+### Project structure
+
+```text
+app/        Yura application: Compose UI, library, reader, TTS, and WebDAV sync
+readium/    Readium Kotlin Toolkit sources, maintained as a Git subtree
+buildSrc/   Shared Gradle build logic from the toolkit
+scripts/    Maintenance scripts, including the Readium subtree updater
+docs/       Project maintenance documentation
+```
+
+### Updating Readium
+
+`readium/` is managed as a Git subtree from the [Readium Kotlin Toolkit](https://github.com/readium/kotlin-toolkit). Start with a clean working tree, then run:
+
+```powershell
+.\scripts\update-readium-subtree.ps1
+.\gradlew.bat :app:assembleDebug
+```
+
+The script uses Readium's `develop` branch by default. See [docs/readium-subtree.md](docs/readium-subtree.md) for details and for selecting another branch or tag.
+
+### Technology
+
+- Kotlin and Jetpack Compose / Material 3
+- Readium Kotlin Toolkit
+- Room database
+- Media3 media session and Android TTS
+- OkHttp-based WebDAV client
+
+---
+
+<a id="中文"></a>
+
+## 中文
+
+**Yura** 是一款以本地阅读为核心的 Android 电子书应用，支持 EPUB 与 TXT。项目使用 Jetpack Compose 构建界面，并基于 [Readium Kotlin Toolkit](https://github.com/readium/kotlin-toolkit) 实现 EPUB 渲染、目录导航、阅读位置、书签和阅读偏好设置。
+
+### 已实现功能
+
+- **本地书架**：导入 EPUB、TXT 文件；TXT 会自动转换为 EPUB，以获得统一的阅读体验；书籍保存在应用私有目录，并自动恢复最近阅读位置。
+- **书架管理**：显示书籍信息和阅读进度；可更换封面；删除书籍时同时清理对应本地文件与书签。
+- **阅读器**：支持目录、章节导航、书签、阅读进度记录和阅读位置恢复。
+- **阅读设置**：支持浅色、深色、护眼色和跟随系统主题；可调整字号、行高、段首缩进、段间距、字间距；支持滚动/翻页、书籍原始样式和单栏/双栏排版。
+- **朗读（TTS）**：支持 Android 系统语音，以及可选的小米 MiMo 和微软 Azure Speech 语音服务；支持暂停/继续、倍速、后台媒体控制、自动朗读下一章和段落高亮。
+- **WebDAV 同步**：可手动上传或下载书籍文件、封面和阅读进度；同步时会合并进度，不会删除本地数据。
+- **设备适配**：手机固定竖屏；最小宽度达到 `600dp` 的平板可自由旋转。
+
+### 使用方法
+
+1. 在 Android 设备上安装并打开 Yura。
+2. 在书架页点击右上角 **+**，选择 EPUB 或 TXT 文件导入。
+3. 点击书籍开始阅读；点击阅读区域可显示阅读器控制栏。
+4. 在 **设置** 中配置阅读样式、朗读服务或 WebDAV 同步。
+
+### TTS 与 WebDAV 说明
+
+- 系统朗读使用设备已经安装的 Android TTS 语音引擎。
+- 小米 MiMo 和微软 Azure Speech 需要在 **朗读设置** 中填写服务凭证；它们会使用网络，并可能产生服务商费用。
+- WebDAV 需要配置服务器地址、用户名、密码和远程路径；同步为手动触发，且不会删除本地书籍。
+- 凭证使用 Android Keystore 在设备上加密保存。请不要分享包含 API Key、密码或同步配置的截图和备份。
+
+### 从源码构建
+
+#### 环境要求
+
+- 已安装 Android Studio（使用其自带的 JDK 21）
+- Android SDK Platform 36
+- Android 6.0（API 23）及以上的真机或模拟器
+
+#### 构建命令
+
+```powershell
+# Windows PowerShell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+.\gradlew.bat :app:assembleDebug
+```
+
+生成的调试 APK 位于 `app/build/outputs/apk/debug/`。
+
+### 目录结构
+
+```text
+app/        Yura 应用代码：Compose 界面、书架、阅读器、朗读和 WebDAV 同步
+readium/    Readium Kotlin Toolkit 源码，以 Git subtree 方式维护
+buildSrc/   来自工具包的共享 Gradle 构建逻辑
+scripts/    维护脚本，包括 Readium subtree 更新脚本
+docs/       项目维护文档
+```
+
+### 更新 Readium
+
+`readium/` 通过 Git subtree 管理，来源为 [Readium Kotlin Toolkit](https://github.com/readium/kotlin-toolkit)。请先确保工作区没有未提交改动，再执行：
+
+```powershell
+.\scripts\update-readium-subtree.ps1
+.\gradlew.bat :app:assembleDebug
+```
+
+该脚本默认同步 Readium 的 `develop` 分支。切换到其他分支或标签、以及更多维护说明，请查看 [docs/readium-subtree.md](docs/readium-subtree.md)。

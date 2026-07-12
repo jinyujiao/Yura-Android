@@ -51,12 +51,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteBook(book: Book) {
+    fun removeLocalBook(book: Book) {
         viewModelScope.launch {
-            repository.deleteBook(book)
-            transientState.value = transientState.value.copy(message = "已删除《${book.title}》")
+            repository.removeLocalBook(book)
+            transientState.value = transientState.value.copy(message = "已从本机移除《${book.title}》")
         }
     }
+
+    fun deleteBookEverywhere(book: Book) {
+        viewModelScope.launch {
+            repository.deleteBookEverywhere(book)
+            transientState.value = transientState.value.copy(message = "已标记《${book.title}》为全设备删除")
+        }
+    }
+
+    fun deleteBook(book: Book) = removeLocalBook(book)
 
     fun changeCover(book: Book, uri: Uri) {
         viewModelScope.launch {

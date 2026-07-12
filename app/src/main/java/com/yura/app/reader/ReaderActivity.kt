@@ -1,4 +1,4 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package com.yura.app.reader
 
@@ -38,12 +38,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -248,6 +250,12 @@ class ReaderActivity : FragmentActivity() {
                     totalPages = totalPages,
                     progressLabel = progressLabel,
                     chapterTitle = chapterTitle,
+                    currentLocator = currentLocator,
+                    onTocLink = { link ->
+                        current.publication.locatorFromLink(link)?.let { locator ->
+                            navigatorFragment?.go(locator, animated = true)
+                        }
+                    },
                     onControlsVisibleChange = { controlsVisible = it },
                     onToc = {
                         controlsVisible = false
@@ -355,15 +363,28 @@ class ReaderActivity : FragmentActivity() {
         totalPages: Int,
         progressLabel: String,
         chapterTitle: String,
+        currentLocator: Locator?,
+        onTocLink: (Link) -> Unit,
         onControlsVisibleChange: (Boolean) -> Unit,
         onToc: () -> Unit,
         onSettings: () -> Unit,
         onTts: () -> Unit,
         onPageChanged: (Int, Int, Locator) -> Unit,
     ) {
-        Box(Modifier.fillMaxSize()) {
-            EpubNavigatorHost(data = data, onPageChanged = onPageChanged)
-            ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val tablet = maxWidth >= 600.dp
+            if (tablet) {
+                Row(Modifier.fillMaxSize()) {
+                    TocPane(data.publication.tableOfContents, data.publication, currentLocator, onTocLink, Modifier.width(300.dp).fillMaxHeight())
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        EpubNavigatorHost(data = data, onPageChanged = onPageChanged)
+                        ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
+                    }
+                }
+            } else {
+                EpubNavigatorHost(data = data, onPageChanged = onPageChanged)
+                ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
+            }
 
             AnimatedVisibility(
                 visible = controlsVisible,
@@ -1186,6 +1207,16 @@ private fun TtsPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0, 15, 30).forEach { minutes ->
+                    PreferenceChoice(
+                        text = if (minutes == 0) "Timer off" else "$minutes min",
+                        selected = uiState.sleepTimerMinutes == minutes,
+                        onClick = { controller.setSleepTimer(minutes) },
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1696,6 +1727,27 @@ private fun ReaderControlAction(label: String, onClick: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
         )
+    }
+}
+
+@Composable
+private fun TocPane(links: List<Link>, publication: Publication, currentLocator: Locator?, onGo: (Link) -> Unit, modifier: Modifier = Modifier) {
+    val entries = remember(links) { flattenToc(links) }
+    val activeIndex = remember(entries, currentLocator) { findActiveTocIndex(entries, publication, currentLocator) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = activeIndex.coerceAtLeast(0))
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("目录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            if (entries.isEmpty()) {
+                Text("这本书没有提供目录。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    itemsIndexed(entries, key = { _, entry -> "${entry.depth}-${entry.link.href}" }) { index, entry ->
+                        TocRow(link = entry.link, depth = entry.depth, selected = index == activeIndex, onGo = onGo)
+                    }
+                }
+            }
+        }
     }
 }
 

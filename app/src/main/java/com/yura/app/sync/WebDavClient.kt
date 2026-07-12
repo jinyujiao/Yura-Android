@@ -1,4 +1,4 @@
-package com.yura.app.sync
+﻿package com.yura.app.sync
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +13,11 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 class WebDavClient {
+    data class RemoteText(
+        val content: String?,
+        val eTag: String?,
+    )
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -41,22 +46,36 @@ class WebDavClient {
                     .build()
                 http.newCall(request).execute().use { response ->
                     if (response.code !in listOf(200, 201, 204, 405)) {
-                        error("创建远端目录失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                        error("创建远端目录失败 (${response.code})：${response.errorText()}")
                     }
                 }
             }
         }
 
-    suspend fun putText(settings: WebDavSettings, fileName: String, content: String): Result<Unit> =
+    suspend fun putTextIfUnchanged(
+        settings: WebDavSettings,
+        fileName: String,
+        content: String,
+        expectedETag: String?,
+        remoteExists: Boolean,
+    ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 ensureRemoteDirectory(settings).getOrThrow()
                 val request = settings.requestBuilder(settings.fileUrl(fileName))
                     .put(content.toRequestBody(JSON_MEDIA_TYPE))
+                    .apply {
+                        when {
+                            !remoteExists -> header("If-None-Match", "*")
+                            expectedETag != null -> header("If-Match", expectedETag)
+                            else -> error("WebDAV 服务器未返回 ETag，无法安全同步。")
+                        }
+                    }
                     .build()
                 http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        error("上传同步数据失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                    when {
+                        response.code == 412 -> error("同步冲突：远端数据已被其他设备更新，请重新同步。")
+                        !response.isSuccessful -> error("上传同步数据失败 (${response.code})：${response.errorText()}")
                     }
                 }
             }
@@ -71,21 +90,21 @@ class WebDavClient {
                     .build()
                 http.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        error("上传文件失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                        error("上传文件失败 (${response.code})：${response.errorText()}")
                     }
                 }
             }
         }
 
-    suspend fun getText(settings: WebDavSettings, fileName: String): Result<String?> =
+    suspend fun getText(settings: WebDavSettings, fileName: String): Result<RemoteText> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val request = settings.requestBuilder(settings.fileUrl(fileName)).get().build()
                 http.newCall(request).execute().use { response ->
                     when (response.code) {
-                        200 -> response.body?.string().orEmpty()
-                        404 -> null
-                        else -> error("下载同步数据失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                        200 -> RemoteText(response.body?.string().orEmpty(), response.header("ETag"))
+                        404 -> RemoteText(content = null, eTag = null)
+                        else -> error("下载同步数据失败 (${response.code})：${response.errorText()}")
                     }
                 }
             }
@@ -105,7 +124,7 @@ class WebDavClient {
                             true
                         }
                         404 -> false
-                        else -> error("下载文件失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                        else -> error("下载文件失败 (${response.code})：${response.errorText()}")
                     }
                 }
             }
@@ -118,7 +137,7 @@ class WebDavClient {
             .build()
         http.newCall(request).execute().use { response ->
             if (response.code !in listOf(200, 207, 404)) {
-                error("WebDAV 请求失败 (${response.code})：${response.body?.string().orEmpty().take(180)}")
+                error("WebDAV 请求失败 (${response.code})：${response.errorText()}")
             }
             return response.code
         }
@@ -126,8 +145,9 @@ class WebDavClient {
 
     private fun WebDavSettings.fullRemoteUrl(): String {
         val base = serverUrl.trim().trimEnd('/')
-        require(base.startsWith("http://") || base.startsWith("https://")) {
-            "WebDAV 地址需要以 http:// 或 https:// 开头。"
+        val parsedBase = URI(base)
+        require(parsedBase.scheme.equals("https", ignoreCase = true)) {
+            "WebDAV 地址必须使用 HTTPS，以保护账号和同步数据。"
         }
         val path = remotePath.trim().ifBlank { "/" }
         val normalizedPath = if (path.startsWith("/")) path else "/$path"
@@ -143,6 +163,9 @@ class WebDavClient {
                 header("Authorization", Credentials.basic(username, password, Charsets.UTF_8))
             }
         }
+
+    private fun okhttp3.Response.errorText(): String =
+        body?.string().orEmpty().take(180)
 
     private companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()

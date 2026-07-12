@@ -2,6 +2,7 @@ package com.yura.app.sync
 
 import android.content.Context
 import com.yura.app.data.Book
+import com.yura.app.data.DeletedBook
 import com.yura.app.data.YuraDatabase
 import java.io.File
 import java.net.URI
@@ -31,15 +32,22 @@ class WebDavSyncRepository(context: Context) {
                 require(settings.enabled) { "请先启用 WebDAV 同步。" }
 
                 client.ensureRemoteDirectory(settings).getOrThrow()
-                val remote = client.getText(settings, SYNC_FILE).getOrThrow()
+                val remoteText = client.getText(settings, SYNC_FILE).getOrThrow()
+                val remote = remoteText.content
                     ?.let { SyncSnapshot.fromJson(JSONObject(it)) }
                     ?: SyncSnapshot(emptyList())
 
-                val downloadedBooks = downloadMissingBooks(settings, remote)
                 val mergeResult = mergeRemote(remote)
+                val downloadedBooks = downloadMissingBooks(settings, remote)
                 val local = buildSnapshot()
                 val uploadedBooks = uploadLocalBooks(settings, local)
-                client.putText(settings, SYNC_FILE, local.toJson().toString()).getOrThrow()
+                client.putTextIfUnchanged(
+                    settings = settings,
+                    fileName = SYNC_FILE,
+                    content = local.toJson().toString(),
+                    expectedETag = remoteText.eTag,
+                    remoteExists = remoteText.content != null,
+                ).getOrThrow()
 
                 WebDavSyncResult(
                     uploadedBooks = uploadedBooks,
@@ -51,10 +59,11 @@ class WebDavSyncRepository(context: Context) {
 
     private suspend fun downloadMissingBooks(settings: WebDavSettings, snapshot: SyncSnapshot): Int {
         val localIdentifiers = dao.allBooks().map { it.identifier }.toSet()
+        val deletedIdentifiers = dao.deletedBooks().map { it.identifier }.toSet() + snapshot.deletedBooks.map { it.identifier }
         var downloaded = 0
 
         snapshot.books.forEach { remote ->
-            if (remote.identifier.isBlank() || remote.identifier in localIdentifiers) return@forEach
+            if (remote.identifier.isBlank() || remote.identifier in localIdentifiers || remote.identifier in deletedIdentifiers) return@forEach
             val fileName = remote.fileName ?: return@forEach
             val bookFile = File(appContext.filesDir, "books/${uniqueLocalFileName(fileName)}")
             val hasBook = client.getFile(settings, fileName, bookFile).getOrThrow()
@@ -113,22 +122,37 @@ class WebDavSyncRepository(context: Context) {
     }
 
     private suspend fun mergeRemote(snapshot: SyncSnapshot): MergeResult {
+        val localDeletedByIdentifier = dao.deletedBooks().associateBy { it.identifier }
+        snapshot.deletedBooks.forEach { remoteDeleted ->
+            val localDeleted = localDeletedByIdentifier[remoteDeleted.identifier]
+            if (localDeleted == null || remoteDeleted.deletedAt > localDeleted.deletedAt) {
+                dao.upsertDeletedBook(DeletedBook(remoteDeleted.identifier, remoteDeleted.deletedAt))
+                dao.bookByIdentifier(remoteDeleted.identifier)?.let { book ->
+                    dao.deleteBookmarksForBook(book.id)
+                    dao.deleteBook(book.id)
+                    runCatching { book.localFile()?.delete() }
+                    runCatching { book.cover.takeIf { it.isNotBlank() }?.let(::File)?.delete() }
+                }
+            }
+        }
+
         val localBooks = dao.allBooks()
         val booksByIdentifier = localBooks.associateBy { it.identifier }
+        val deletedIdentifiers = dao.deletedBooks().map { it.identifier }.toSet()
         var progressCount = 0
-
         snapshot.books.forEach { remote ->
+            if (remote.identifier in deletedIdentifiers) return@forEach
             val local = booksByIdentifier[remote.identifier] ?: return@forEach
             if (remote.lastReadDate > local.lastReadDate && remote.progression.isNotBlank()) {
                 dao.saveProgression(local.id, remote.progression, remote.lastReadDate)
                 progressCount++
             }
         }
-
         return MergeResult(progressCount)
     }
 
     private suspend fun buildSnapshot(): SyncSnapshot {
+        dao.deleteExpiredTombstones(System.currentTimeMillis() - TOMBSTONE_RETENTION_MS)
         val books = dao.allBooks()
         val progress = books.map { book ->
             val bookFile = book.localFile()
@@ -150,7 +174,10 @@ class WebDavSyncRepository(context: Context) {
                 localCoverPath = coverFile?.absolutePath,
             )
         }
-        return SyncSnapshot(progress)
+        return SyncSnapshot(
+            books = progress,
+            deletedBooks = dao.deletedBooks().map { SyncDeletedBook(it.identifier, it.deletedAt) },
+        )
     }
 
     private data class MergeResult(
@@ -159,11 +186,13 @@ class WebDavSyncRepository(context: Context) {
 
     private data class SyncSnapshot(
         val books: List<SyncBook>,
+        val deletedBooks: List<SyncDeletedBook> = emptyList(),
     ) {
         fun toJson(): JSONObject =
             JSONObject()
-                .put("version", 2)
+                .put("version", 3)
                 .put("books", JSONArray().also { array -> books.forEach { array.put(it.toJson()) } })
+                .put("deletedBooks", JSONArray().also { array -> deletedBooks.forEach { array.put(it.toJson()) } })
 
         companion object {
             fun fromJson(json: JSONObject): SyncSnapshot =
@@ -171,7 +200,26 @@ class WebDavSyncRepository(context: Context) {
                     books = json.optJSONArray("books")?.let { array ->
                         List(array.length()) { SyncBook.fromJson(array.getJSONObject(it)) }
                     }.orEmpty(),
+                    deletedBooks = json.optJSONArray("deletedBooks")?.let { array ->
+                        List(array.length()) { SyncDeletedBook.fromJson(array.getJSONObject(it)) }
+                    }.orEmpty(),
                 )
+        }
+    }
+
+    private data class SyncDeletedBook(
+        val identifier: String,
+        val deletedAt: Long,
+    ) {
+        fun toJson(): JSONObject = JSONObject()
+            .put("identifier", identifier)
+            .put("deletedAt", deletedAt)
+
+        companion object {
+            fun fromJson(json: JSONObject): SyncDeletedBook = SyncDeletedBook(
+                identifier = json.optString("identifier"),
+                deletedAt = json.optLong("deletedAt"),
+            )
         }
     }
 
@@ -238,5 +286,6 @@ class WebDavSyncRepository(context: Context) {
 
     private companion object {
         const val SYNC_FILE = "yura-sync.json"
+        const val TOMBSTONE_RETENTION_MS = 90L * 24 * 60 * 60 * 1000
     }
 }

@@ -1,7 +1,8 @@
-package com.yura.app.sync
+﻿package com.yura.app.sync
 
 import android.content.Context
 import androidx.core.content.edit
+import com.yura.app.security.SecureSettings
 
 data class WebDavSettings(
     val enabled: Boolean = false,
@@ -26,7 +27,7 @@ object WebDavSettingsStore {
             enabled = prefs.getBoolean(KEY_ENABLED, false),
             serverUrl = prefs.getString(KEY_SERVER_URL, "").orEmpty(),
             username = prefs.getString(KEY_USERNAME, "").orEmpty(),
-            password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
+            password = SecureSettings.migrateString(context, PREFS_NAME, KEY_PASSWORD),
             remotePath = prefs.getString(KEY_REMOTE_PATH, "/Yura").orEmpty().ifBlank { "/Yura" },
         )
     }
@@ -36,9 +37,10 @@ object WebDavSettingsStore {
             putBoolean(KEY_ENABLED, settings.enabled)
             putString(KEY_SERVER_URL, settings.serverUrl.trim())
             putString(KEY_USERNAME, settings.username.trim())
-            putString(KEY_PASSWORD, settings.password)
             putString(KEY_REMOTE_PATH, settings.remotePath.trim().ifBlank { "/Yura" })
+            remove(KEY_PASSWORD)
         }
+        SecureSettings.putString(context, KEY_PASSWORD, settings.password)
     }
 
     fun lastSyncAt(context: Context): Long =
