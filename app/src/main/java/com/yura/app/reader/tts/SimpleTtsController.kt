@@ -1,10 +1,8 @@
 package com.yura.app.reader.tts
 
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -165,12 +163,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             )
         }
     }
-    private val noisyReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) pause()
-        }
-    }
-    private var noisyReceiverRegistered = false
+    private val audioRouteListener = TtsAudioRouteListener(appContext, ::pause)
 
     var onParagraphChanged: ((Int) -> Unit)? = null
     var onQueueEnded: (() -> Unit)? = null
@@ -220,8 +213,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             }
         )
         installTtsListener()
-        appContext.registerReceiver(noisyReceiver, IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-        noisyReceiverRegistered = true
+        audioRouteListener.register()
     }
 
     private fun createSystemTts(engine: String? = null) {
@@ -597,10 +589,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         tts.stop()
         player.stop()
         player.clearMediaItems()
-        if (noisyReceiverRegistered) {
-            runCatching { appContext.unregisterReceiver(noisyReceiver) }
-            noisyReceiverRegistered = false
-        }
+        audioRouteListener.unregister()
         releaseMediaControls()
         stopping = false
         cleanAudioFiles()
