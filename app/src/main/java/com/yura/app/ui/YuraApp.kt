@@ -520,41 +520,57 @@ private fun LibraryScreen(
         )
     }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 26.dp, top = 18.dp, end = 26.dp, bottom = 116.dp),
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp),
-    ) {
-        if (state.isImporting) item(span = { GridItemSpan(maxLineSpan) }) { ImportStatusBanner() }
-        if (state.isLoading) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (selectedBooks.isNotEmpty()) {
+            ShelfSelectionBar(
+                selectedCount = selectedBooks.size,
+                canChangeCover = selectedBooks.size == 1,
+                onChangeCover = {
+                    selectedBooks.singleOrNull()?.let(onChangeCover)
+                    selectedBookIds = emptySet()
+                },
+                onRemoveFromDevice = { deleteAction = ShelfDeleteAction.RemoveFromDevice },
+                onDeleteEverywhere = { deleteAction = ShelfDeleteAction.DeleteEverywhere },
+                onCancel = { selectedBookIds = emptySet() },
+                modifier = Modifier.padding(start = 26.dp, top = 10.dp, end = 26.dp),
+            )
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(start = 26.dp, top = 18.dp, end = 26.dp, bottom = 116.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalArrangement = Arrangement.spacedBy(26.dp),
+        ) {
+            if (state.isImporting) item(span = { GridItemSpan(maxLineSpan) }) { ImportStatusBanner() }
+            if (state.isLoading) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                    }
                 }
-            }
-        } else if (state.books.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibraryCard() }
-        } else if (sortedBooks.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(150.dp)) {
-                    Box(modifier = Modifier.padding(20.dp), contentAlignment = Alignment.Center) {
-                        Text("没有符合条件的书籍", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            } else if (state.books.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibraryCard() }
+            } else if (sortedBooks.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(150.dp)) {
+                        Box(modifier = Modifier.padding(20.dp), contentAlignment = Alignment.Center) {
+                            Text("没有符合条件的书籍", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
-        }
-        items(sortedBooks, key = { it.id }) { book ->
-            ShelfBookCard(
-                book = book,
-                selected = book.id in selectedBookIds,
-                onClick = {
-                    if (selectedBookIds.isEmpty()) onOpenReader(book) else selectedBookIds = selectedBookIds.toggle(book.id)
-                },
-                onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
-            )
-        }
-        )
+            items(sortedBooks, key = { it.id }) { book ->
+                ShelfBookCard(
+                    book = book,
+                    selected = book.id in selectedBookIds,
+                    onClick = {
+                        if (selectedBookIds.isEmpty()) onOpenReader(book) else selectedBookIds = selectedBookIds.toggle(book.id)
+                    },
+                    onLongClick = { selectedBookIds = selectedBookIds.toggle(book.id) },
+                )
+            }
+            }
     }
 }
 
@@ -566,6 +582,7 @@ private fun ShelfSelectionBar(
     onRemoveFromDevice: () -> Unit,
     onDeleteEverywhere: () -> Unit,
     onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
