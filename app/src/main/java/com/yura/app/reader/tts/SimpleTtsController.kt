@@ -33,7 +33,6 @@ import com.yura.app.security.SecureSettings
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import java.text.BreakIterator
 import java.util.Base64
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -95,6 +94,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     private val appContext = context.applicationContext
     private val locale = Locale.getDefault()
+    private val textProcessor = TtsTextProcessor(locale)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val audioDir = File(appContext.cacheDir, "tts-audio")
@@ -473,7 +473,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
 
         paragraphs.clear()
-        paragraphs.addAll(items.map { cleanTextForSpeech(it) }.filter { it.isNotBlank() })
+        paragraphs.addAll(items.map { textProcessor.clean(it) }.filter { it.isNotBlank() })
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
@@ -536,7 +536,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         ensureMediaControls()
 
         paragraphs.clear()
-        paragraphs += cleanTextForSpeech(text)
+        paragraphs += textProcessor.clean(text)
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         rebuildSpeechItems()
@@ -634,97 +634,16 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         speechItems.clear()
         var globalIndex = 0
         paragraphs.forEachIndexed { paragraphIndex, paragraph ->
-            splitSentences(cleanTextForSpeech(paragraph)).forEachIndexed { sentenceIndex, sentence ->
+            textProcessor.splitSentences(textProcessor.clean(paragraph)).forEachIndexed { sentenceIndex, sentence ->
                 speechItems += SpeechItem(
                     paragraphIndex = paragraphIndex,
                     sentenceIndexInParagraph = sentenceIndex,
                     sentenceGlobalIndex = globalIndex,
-                    text = cleanTextForSpeech(sentence),
+                    text = textProcessor.clean(sentence),
                 )
                 globalIndex++
             }
         }
-    }
-
-    private fun splitSentences(text: String): List<String> {
-        val cleaned = cleanTextForSpeech(text)
-        val iterator = BreakIterator.getSentenceInstance(locale)
-        iterator.setText(cleaned)
-
-        val sentences = mutableListOf<String>()
-        var start = iterator.first()
-        var end = iterator.next()
-        while (end != BreakIterator.DONE) {
-            cleaned.substring(start, end)
-                .trim()
-                .takeIf { it.isNotBlank() }
-                ?.let { sentences += it }
-            start = end
-            end = iterator.next()
-        }
-
-        val baseSentences = sentences.ifEmpty {
-            cleaned.split(Regex("(?<=[。！？!?\\.])\\s+|(?<=[。！？!?])"))
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .ifEmpty { listOf(cleaned.trim()) }
-        }
-        return baseSentences.flatMap { splitLongSpeechChunk(it) }
-    }
-
-    private fun splitLongSpeechChunk(text: String): List<String> {
-        val cleaned = cleanTextForSpeech(text)
-        if (cleaned.length <= MAX_TTS_CHUNK_CHARS) return listOf(cleaned)
-
-        val chunks = mutableListOf<String>()
-        var remaining = cleaned
-        while (remaining.length > MAX_TTS_CHUNK_CHARS) {
-            val splitAt = bestSpeechSplitIndex(remaining)
-            chunks += remaining.substring(0, splitAt).trim()
-            remaining = remaining.substring(splitAt).trimStart()
-        }
-        if (remaining.isNotBlank()) chunks += remaining.trim()
-        return chunks.filter { it.isNotBlank() }.also {
-            Log.d(
-                TAG,
-                "splitLongSpeechChunk length=${cleaned.length} chunks=${it.size} sizes=${it.joinToString { chunk -> chunk.length.toString() }}"
-            )
-        }
-    }
-
-    private fun bestSpeechSplitIndex(text: String): Int {
-        val limit = MAX_TTS_CHUNK_CHARS.coerceAtMost(text.length)
-        val min = MIN_TTS_CHUNK_CHARS.coerceAtMost(limit)
-        val preferred = Regex("[，,、；;：:]")
-        val loose = Regex("\\s+")
-
-        preferred.findAll(text.substring(0, limit))
-            .map { it.range.last + 1 }
-            .filter { it >= min }
-            .lastOrNull()
-            ?.let { return it }
-
-        loose.findAll(text.substring(0, limit))
-            .map { it.range.last + 1 }
-            .filter { it >= min }
-            .lastOrNull()
-            ?.let { return it }
-
-        return limit
-    }
-
-    private fun cleanTextForSpeech(text: String): String {
-        val cleaned = text
-            .replace(Regex("[“”\"‘’']\\s*(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}[“”\"‘’']"), " ")
-            .replace(Regex("(?:[.．｡﹒․·•・…⋯︙︰]\\s*){2,}"), " ")
-            .replace(Regex("[—–-]{2,}"), " ")
-            .replace(Regex("[~～_＿=＝*＊#＃]{2,}"), " ")
-            .replace(Regex("[“”\"‘’']\\s+[“”\"‘’']"), " ")
-            .replace(Regex("([。！？!?，,、；;：:])\\1+"), "$1")
-            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
     }
 
     private fun ensureMediaControls() {
