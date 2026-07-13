@@ -19,6 +19,7 @@ class ParagraphFragmenter {
       }
     }
     this.fragmentations = [];
+    this.nextFragmentationId = 0;
   }
 
   scheduleUpdate() {
@@ -121,23 +122,63 @@ class ParagraphFragmenter {
     }
 
     const range = this.window.document.createRange();
-    const boundaries = [];
-    let previousColumn;
-
-    for (let offset = 0; offset < textNode.length; offset++) {
+    const columnAt = (offset) => {
       range.setStart(textNode, offset);
       range.setEnd(textNode, offset + 1);
       const rect = range.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) {
-        continue;
+        return undefined;
+      }
+      const documentX = rect.left + this.window.scrollX;
+      return Math.floor((documentX + 1) / viewportWidth);
+    };
+    const measurableAtOrAfter = (offset, end) => {
+      for (let candidate = offset; candidate <= end; candidate++) {
+        const column = columnAt(candidate);
+        if (column !== undefined) {
+          return { offset: candidate, column };
+        }
+      }
+      return undefined;
+    };
+
+    const first = measurableAtOrAfter(0, textNode.length - 1);
+    if (!first) {
+      range.detach();
+      return [];
+    }
+
+    let lastOffset = textNode.length - 1;
+    let lastColumn = columnAt(lastOffset);
+    while (lastOffset > first.offset && lastColumn === undefined) {
+      lastColumn = columnAt(--lastOffset);
+    }
+    if (lastColumn === undefined || lastColumn === first.column) {
+      range.detach();
+      return [];
+    }
+
+    const boundaries = [];
+    let current = first;
+    while (current.column < lastColumn && current.offset < lastOffset) {
+      let low = current.offset + 1;
+      let high = lastOffset;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        const measured = measurableAtOrAfter(middle, high);
+        if (!measured || measured.column > current.column) {
+          high = measured?.offset ?? middle;
+        } else {
+          low = measured.offset + 1;
+        }
       }
 
-      const documentX = rect.left + this.window.scrollX;
-      const column = Math.floor((documentX + 1) / viewportWidth);
-      if (previousColumn !== undefined && column !== previousColumn) {
-        boundaries.push(offset);
+      const next = measurableAtOrAfter(low, lastOffset);
+      if (!next || next.column <= current.column) {
+        break;
       }
-      previousColumn = column;
+      boundaries.push(next.offset);
+      current = next;
     }
 
     range.detach();
