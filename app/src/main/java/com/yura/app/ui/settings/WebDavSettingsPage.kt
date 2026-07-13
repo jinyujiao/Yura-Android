@@ -65,6 +65,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -143,7 +144,7 @@ fun WebDavSettingsPage() {
         else -> null
     }
     val syncOk = workInfo?.state == WorkInfo.State.SUCCEEDED
-    var lastSyncAt by remember { mutableStateOf(WebDavSettingsStore.lastSyncAt(context)) }
+    var lastSyncAt by remember { mutableLongStateOf(WebDavSettingsStore.lastSyncAt(context)) }
 
     fun update(updated: WebDavSettings) {
         settings = updated

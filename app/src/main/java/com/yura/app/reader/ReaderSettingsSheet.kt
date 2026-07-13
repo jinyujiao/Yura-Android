@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.FontFamily
@@ -116,7 +117,7 @@ fun ReaderSettingsSheet(
             item {
                 PreferenceSlider(
                     title = "\u884c\u9ad8",
-                    valueLabel = String.format("%.1f", preferences.lineHeight ?: 1.5),
+                    valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
                     value = (preferences.lineHeight ?: 1.5).toFloat(),
                     valueRange = 1.0f..2.2f,
                     steps = 5,
@@ -309,5 +310,5 @@ private fun roundToStep(value: Float, step: Float): Double =
     (kotlin.math.round(value / step) * step).toDouble()
 
 fun Float.formatSpeed(): String =
-    if (this % 1f == 0f) toInt().toString() else String.format("%.1f", this)
+    if (this % 1f == 0f) toInt().toString() else String.format(Locale.ROOT, "%.1f", this)
 

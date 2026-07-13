@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <bool name="is_tablet">true</bool>
-    <integer name="activity_launch_orientation">-1</integer>
 </resources>

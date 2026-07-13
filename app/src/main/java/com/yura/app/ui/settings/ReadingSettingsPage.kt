@@ -85,6 +85,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import androidx.compose.ui.zIndex
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
@@ -176,7 +177,7 @@ fun ReadingSettingsPage(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                 AppPreferenceSlider(
                     title = "\u884c\u9ad8",
-                    valueLabel = String.format("%.1f", preferences.lineHeight ?: 1.5),
+                    valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
                     value = (preferences.lineHeight ?: 1.5).toFloat(),
                     valueRange = 1.0f..2.2f,
                     steps = 5,

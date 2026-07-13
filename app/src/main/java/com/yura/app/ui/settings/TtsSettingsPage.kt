@@ -63,7 +63,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -88,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
@@ -119,7 +119,7 @@ import org.readium.r2.navigator.preferences.Theme
 
 @Composable
 fun CleanTtsSettingsPage(controller: SimpleTtsController) {
-    val uiState by controller.state.collectAsState()
+    val uiState by controller.state.collectAsStateWithLifecycle()
     var providerMenuOpen by remember { mutableStateOf(false) }
     var mimoVoiceMenuOpen by remember { mutableStateOf(false) }
     var microsoftVoiceMenuOpen by remember { mutableStateOf(false) }

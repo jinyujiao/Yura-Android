@@ -63,7 +63,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -88,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
@@ -129,7 +129,7 @@ fun YuraApp() {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(RootTab.Library) }
     val libraryViewModel: LibraryViewModel = viewModel()
-    val libraryState by libraryViewModel.uiState.collectAsState()
+    val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }

@@ -51,6 +51,8 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
 
+For an optimized APK that can be installed directly without a production signing key, run `./gradlew :app:assembleLocalRelease`. It uses the local Android debug certificate and is intended only for device testing.
+
 
 ### Testing, CI, and releases
 

@@ -18,11 +18,10 @@ internal class TtsAudioCache(context: Context) {
     }
 
     fun durationMs(file: File): Long = runCatching {
-        val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(file.absolutePath)
-        val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        retriever.release()
-        duration
+        MediaMetadataRetriever().use { retriever ->
+            retriever.setDataSource(file.absolutePath)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        }
     }.getOrDefault(0L)
 
     fun boostPcmWavVolume(file: File) {

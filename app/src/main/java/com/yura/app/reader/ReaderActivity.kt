@@ -66,7 +66,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -87,6 +86,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commitNow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
 import com.yura.app.data.YuraDatabase
@@ -127,7 +127,8 @@ class ReaderActivity : FragmentActivity() {
     private var publication: Publication? = null
     private var navigatorFragment: EpubNavigatorFragment? = null
     private var showControlsCallback: (() -> Unit)? = null
-    private var lastSavedProgressionJson: String? = null
+    private val progressionSaver by lazy { ReaderProgressionSaver(lifecycleScope, dao) }
+    private val mediaIndentFixRunnables = mutableListOf<Runnable>()
     private var currentTtsWebView: WebView? = null
     private var currentTtsDomIndexByParagraph = emptyList<Int>()
     private var currentLocator: Locator? = null
@@ -181,6 +182,7 @@ class ReaderActivity : FragmentActivity() {
 
     override fun onPause() {
         readerForeground = false
+        progressionSaver.flush()
         super.onPause()
     }
 
@@ -188,6 +190,8 @@ class ReaderActivity : FragmentActivity() {
         super.onDestroy()
         ttsController.onParagraphChanged = null
         ttsController.onQueueEnded = null
+        progressionSaver.cancel()
+        cancelPendingMediaIndentFixes()
         navigatorFragment = null
         publication?.close()
         asset?.close()
@@ -213,7 +217,7 @@ class ReaderActivity : FragmentActivity() {
         val effectiveReaderPreferences = remember(readerPreferences, autoReaderTheme, systemDark) {
             ReaderPreferencesStore.resolveTheme(readerPreferences, autoReaderTheme, systemDark)
         }
-        val ttsUiState by ttsController.state.collectAsState()
+        val ttsUiState by ttsController.state.collectAsStateWithLifecycle()
         val ttsActive = ttsUiState.state == SimpleTtsController.State.LOADING ||
             ttsUiState.state == SimpleTtsController.State.PLAYING ||
             ttsUiState.state == SimpleTtsController.State.PAUSED
@@ -846,13 +850,7 @@ class ReaderActivity : FragmentActivity() {
             onPageChanged = { pageIndex, totalPages, locator ->
                 onPageChanged(pageIndex, totalPages, locator)
                 applyMediaIndentFix(activeReaderPreferences)
-                val progressionJson = locator.toJSON().toString()
-                if (progressionJson != lastSavedProgressionJson) {
-                    lastSavedProgressionJson = progressionJson
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        dao.saveProgression(data.book.id, progressionJson, System.currentTimeMillis())
-                    }
-                }
+                progressionSaver.schedule(data.book.id, locator.toJSON().toString())
             },
             onCenterTap = {
                 lifecycleScope.launch {
@@ -864,13 +862,20 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private fun applyMediaIndentFix(preferences: EpubPreferences = activeReaderPreferences) {
-        fun applyOnce() {
-            ReaderMediaStyleFixer.apply(navigatorFragment?.publicationView, preferences)
+        cancelPendingMediaIndentFixes()
+        ReaderMediaStyleFixer.apply(navigatorFragment?.publicationView, preferences)
+        MEDIA_INDENT_FIX_DELAYS_MS.forEach { delayMs ->
+            val runnable = Runnable {
+                ReaderMediaStyleFixer.apply(navigatorFragment?.publicationView, activeReaderPreferences)
+            }
+            mediaIndentFixRunnables += runnable
+            window.decorView.postDelayed(runnable, delayMs)
         }
-        applyOnce()
-        window.decorView.postDelayed({ applyOnce() }, 120)
-        window.decorView.postDelayed({ applyOnce() }, 360)
-        window.decorView.postDelayed({ applyOnce() }, 800)
+    }
+
+    private fun cancelPendingMediaIndentFixes() {
+        mediaIndentFixRunnables.forEach(window.decorView::removeCallbacks)
+        mediaIndentFixRunnables.clear()
     }
 
     private fun loadReaderPreferences(): EpubPreferences = ReaderPreferencesStore.load(this)
@@ -897,6 +902,7 @@ class ReaderActivity : FragmentActivity() {
     companion object {
         private const val EXTRA_BOOK_ID = "book_id"
         private const val NAVIGATOR_TAG = "navigator"
+        private val MEDIA_INDENT_FIX_DELAYS_MS = longArrayOf(120L, 360L, 800L)
         fun intent(context: Context, bookId: Long): Intent =
             Intent(context, ReaderActivity::class.java)
                 .putExtra(EXTRA_BOOK_ID, bookId)

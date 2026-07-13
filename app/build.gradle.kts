@@ -50,6 +50,11 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        create("localRelease") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
 
     testOptions {
@@ -78,6 +83,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.common)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.work.runtime)
     implementation(libs.coil.compose)
@@ -90,6 +96,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

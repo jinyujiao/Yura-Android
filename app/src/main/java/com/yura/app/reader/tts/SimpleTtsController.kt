@@ -172,6 +172,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                             }
                         }
                         Player.STATE_ENDED -> playNextSentence()
+                        Player.STATE_BUFFERING, Player.STATE_IDLE -> Unit
                     }
                 }
 

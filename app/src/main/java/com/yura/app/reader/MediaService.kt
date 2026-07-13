@@ -1,11 +1,7 @@
 package com.yura.app.reader
 
-import android.app.Application
 import android.app.PendingIntent
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.media3.common.ForwardingPlayer
@@ -15,10 +11,10 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.coroutines.CompletableDeferred
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MediaService : MediaSessionService() {
@@ -85,7 +81,7 @@ class MediaService : MediaSessionService() {
                             Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                         }
                         else -> Futures.immediateFuture(
-                            SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED),
+                            SessionResult(SessionError.ERROR_NOT_SUPPORTED),
                         )
                     }
                 }
@@ -109,10 +105,7 @@ class MediaService : MediaSessionService() {
         fun currentTtsSession(): MediaSession? = ttsMediaSession
 
         private fun createSessionActivityIntent(): PendingIntent {
-            var flags = PendingIntent.FLAG_UPDATE_CURRENT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                flags = flags or PendingIntent.FLAG_IMMUTABLE
-            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             val intent = application.packageManager.getLaunchIntentForPackage(application.packageName)
             return PendingIntent.getActivity(applicationContext, 0, intent, flags)
         }
@@ -182,25 +175,5 @@ class MediaService : MediaSessionService() {
         const val SERVICE_INTERFACE = "com.yura.app.reader.MediaService"
         private const val TTS_COMMAND_STOP = "com.yura.app.tts.STOP"
 
-        suspend fun bind(application: Application): Binder {
-            val deferred = CompletableDeferred<Binder>()
-            val connection = object : ServiceConnection {
-                override fun onServiceConnected(name: ComponentName?, service: IBinder) {
-                    deferred.complete(service as Binder)
-                }
-
-                override fun onServiceDisconnected(name: ComponentName?) = Unit
-                override fun onNullBinding(name: ComponentName?) {
-                    if (!deferred.isCompleted) {
-                        deferred.completeExceptionally(IllegalStateException("Failed to bind MediaService."))
-                    }
-                }
-            }
-            application.bindService(intent(application), connection, 0)
-            return deferred.await()
-        }
-
-        private fun intent(application: Application): Intent =
-            Intent(SERVICE_INTERFACE).apply { setClass(application, MediaService::class.java) }
     }
 }
