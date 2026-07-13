@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -101,6 +103,8 @@ public fun ReflowableWebRendition(
             state.layoutDelegate.fontScale = LocalDensity.current.fontScale
 
             val coroutineScope = rememberCoroutineScope()
+            val textSelectionInteractions = remember { mutableStateMapOf<Int, Boolean>() }
+            val isTextSelectionInteractionActive = textSelectionInteractions.values.any { it }
 
             val resourcePadding = when (overflowNow.scroll) {
                 true ->
@@ -147,6 +151,7 @@ public fun ReflowableWebRendition(
                 flingBehavior = flingBehavior,
                 beyondViewportPageCount = 3,
                 orientation = layoutOrientation,
+                enableScroll = !isTextSelectionInteractionActive,
             ) { index ->
                 val href = state.publication.readingOrder.items[index].href
 
@@ -168,6 +173,13 @@ public fun ReflowableWebRendition(
                     decorations = decorations,
                     actionModeCallback = textSelectionActionModeCallback,
                     onSelectionApiChanged = { state.selectionDelegate.selectionApis[index] = it },
+                    onTextSelectionInteractionChanged = { active ->
+                        if (active) {
+                            textSelectionInteractions[index] = true
+                        } else {
+                            textSelectionInteractions.remove(index)
+                        }
+                    },
                     onTap = { tapEvent ->
                         inputListener.onTap(tapEvent, TapContext(viewportSize.value))
                     },

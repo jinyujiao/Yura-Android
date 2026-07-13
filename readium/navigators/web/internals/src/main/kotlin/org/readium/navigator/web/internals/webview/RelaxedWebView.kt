@@ -10,6 +10,7 @@ import android.content.Context
 import android.graphics.Rect
 import android.view.ActionMode
 import android.view.Menu
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebView
 
@@ -17,6 +18,10 @@ import android.webkit.WebView
  * WebView allowing access to some protected fields.
  */
 public class RelaxedWebView(context: Context) : WebView(context) {
+
+    private companion object {
+        const val LONG_PRESS_SELECTION_GRACE_PERIOD_MS = 200L
+    }
 
     public val maxScrollX: Int get() =
         horizontalScrollRange - horizontalScrollExtent
@@ -56,10 +61,51 @@ public class RelaxedWebView(context: Context) : WebView(context) {
 
     private var actionModeCallback: ActionMode.Callback? = null
 
+    private var textSelectionInteractionListener: ((Boolean) -> Unit)? = null
+
+    private val textSelectionInteractionState = TextSelectionInteractionState { active ->
+        textSelectionInteractionListener?.invoke(active)
+    }
+
+    private val releaseLongPressPending = Runnable {
+        textSelectionInteractionState.setLongPressPending(false)
+    }
+
+    public val isTextSelectionInteractionActive: Boolean
+        get() = textSelectionInteractionState.isActive
+
     public fun setCustomSelectionActionModeCallback(
         callback: ActionMode.Callback?,
     ) {
         actionModeCallback = callback
+    }
+
+    public fun setTextSelectionInteractionListener(listener: ((Boolean) -> Unit)?) {
+        textSelectionInteractionListener = listener
+        listener?.invoke(isTextSelectionInteractionActive)
+    }
+
+    public fun setJavascriptSelectionActive(active: Boolean) {
+        textSelectionInteractionState.setJavascriptSelection(active)
+    }
+
+    override fun performLongClick(): Boolean {
+        removeCallbacks(releaseLongPressPending)
+        textSelectionInteractionState.setLongPressPending(true)
+        return super.performLongClick().also { handled ->
+            if (!handled) {
+                textSelectionInteractionState.setLongPressPending(false)
+            }
+        }
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        return super.onTouchEvent(event).also {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                removeCallbacks(releaseLongPressPending)
+                postDelayed(releaseLongPressPending, LONG_PRESS_SELECTION_GRACE_PERIOD_MS)
+            }
+        }
     }
 
     @Suppress("Deprecation")
@@ -70,13 +116,11 @@ public class RelaxedWebView(context: Context) : WebView(context) {
         nextLayoutListener = {}
     }
 
-    private var hasActionMode: Boolean = false
-
     override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
         // Workaround addressing a bug in the Android WebView where the viewport is scrolled while
         // dragging the text selection handles.
         // See https://github.com/readium/kotlin-toolkit/issues/325
-        if (hasActionMode) {
+        if (textSelectionInteractionState.hasActionMode) {
             return
         }
 
@@ -90,8 +134,8 @@ public class RelaxedWebView(context: Context) : WebView(context) {
     override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? {
         val decoratedCallback = CallbackDecorator(
             callback = actionModeCallback ?: callback,
-            onCreateActionModeCallback = { hasActionMode = true },
-            onDestroyActionModeCallback = { hasActionMode = false }
+            onCreateActionModeCallback = { textSelectionInteractionState.setActionMode(true) },
+            onDestroyActionModeCallback = { textSelectionInteractionState.setActionMode(false) }
         )
 
         val wrapper = Callback2Wrapper(
@@ -125,8 +169,11 @@ private class CallbackDecorator(
 ) : ActionMode.Callback by callback {
 
     override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-        onCreateActionModeCallback()
-        return callback.onCreateActionMode(mode, menu)
+        val created = callback.onCreateActionMode(mode, menu)
+        if (created) {
+            onCreateActionModeCallback()
+        }
+        return created
     }
 
     override fun onDestroyActionMode(mode: ActionMode?) {

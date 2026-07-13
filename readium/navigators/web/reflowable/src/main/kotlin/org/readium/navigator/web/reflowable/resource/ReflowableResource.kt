@@ -89,6 +89,7 @@ internal fun ReflowableResource(
     decorations: ImmutableMap<String, List<ReflowableWebDecoration>>,
     actionModeCallback: ActionMode.Callback?,
     onSelectionApiChanged: (ReflowableSelectionApi?) -> Unit,
+    onTextSelectionInteractionChanged: (Boolean) -> Unit,
     onTap: (TapEvent) -> Unit,
     onLinkActivated: (AbsoluteUrl, String) -> Unit,
     onDecorationActivated: (DecorationListener.OnActivatedEvent<ReflowableWebDecorationLocation>) -> Unit,
@@ -317,8 +318,14 @@ internal fun ReflowableResource(
                 selectionListenerApi?.let { selectionListenerApi ->
                     var isSelecting = false
                     selectionListenerApi.listener = DelegatingSelectionListener(
-                        onSelectionStartDelegate = { isSelecting = true },
-                        onSelectionEndDelegate = { isSelecting = false }
+                        onSelectionStartDelegate = {
+                            isSelecting = true
+                            webViewState.webView?.setJavascriptSelectionActive(true)
+                        },
+                        onSelectionEndDelegate = {
+                            isSelecting = false
+                            webViewState.webView?.setJavascriptSelectionActive(false)
+                        }
                     )
 
                     gesturesApi.listener = DelegatingGesturesListener(
@@ -432,14 +439,28 @@ internal fun ReflowableResource(
                     webview.isVerticalScrollBarEnabled = false
                     webview.isHorizontalScrollBarEnabled = false
                     webview.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                    webview.setTextSelectionInteractionListener { active ->
+                        webview.parent?.requestDisallowInterceptTouchEvent(active)
+                        onTextSelectionInteractionChanged(active)
+                    }
                     // Prevents vertical scrolling towards blank space.
                     // See https://github.com/readium/readium-css/issues/158
                     webview.setOnTouchListener { view, event ->
-                        orientationRef == Orientation.Horizontal &&
-                            event.action == MotionEvent.ACTION_MOVE
+                        if (webview.isTextSelectionInteractionActive) {
+                            view.parent?.requestDisallowInterceptTouchEvent(true)
+                            false
+                        } else {
+                            shouldConsumeWebViewMove(
+                                isHorizontalPagination = orientationRef == Orientation.Horizontal,
+                                isMoveEvent = event.action == MotionEvent.ACTION_MOVE,
+                                isTextSelectionInteractionActive = false
+                            )
+                        }
                     }
                 },
                 onDispose = {
+                    webViewState.webView?.setTextSelectionInteractionListener(null)
+                    onTextSelectionInteractionChanged(false)
                     resourceState.scrollController.value = null
                     Timber.d("resource ${resourceState.index} disposed")
                 }
