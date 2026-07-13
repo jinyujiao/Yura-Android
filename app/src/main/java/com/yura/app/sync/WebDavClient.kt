@@ -118,10 +118,18 @@ class WebDavClient {
                     when (response.code) {
                         200 -> {
                             target.parentFile?.mkdirs()
-                            response.body?.byteStream()?.use { input ->
-                                target.outputStream().use { output -> input.copyTo(output) }
-                            } ?: error("远端文件为空。")
-                            true
+                            val temporary = File(target.parentFile, ".${target.name}.${System.nanoTime()}.part")
+                            try {
+                                response.body?.byteStream()?.use { input ->
+                                    temporary.outputStream().use { output -> input.copyTo(output) }
+                                } ?: error("远端文件为空。")
+                                require(temporary.length() > 0L) { "远端文件为空。" }
+                                check(temporary.renameTo(target)) { "无法保存下载文件。" }
+                                true
+                            } catch (error: Throwable) {
+                                temporary.delete()
+                                throw error
+                            }
                         }
                         404 -> false
                         else -> error("下载文件失败 (${response.code})：${response.errorText()}")

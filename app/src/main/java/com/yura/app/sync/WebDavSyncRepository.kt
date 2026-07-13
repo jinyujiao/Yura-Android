@@ -68,10 +68,18 @@ class WebDavSyncRepository(context: Context) {
             val bookFile = File(appContext.filesDir, "books/${uniqueLocalFileName(fileName)}")
             val hasBook = client.getFile(settings, fileName, bookFile).getOrThrow()
             if (!hasBook) return@forEach
+            if (remote.fileHash.isNotBlank() && bookFile.sha256() != remote.fileHash) {
+                bookFile.delete()
+                error("远端图书文件校验失败，请重新同步。")
+            }
 
             val coverPath = remote.coverFileName?.let { coverName ->
                 val coverFile = File(appContext.filesDir, "covers/${uniqueLocalFileName(coverName)}")
                 if (client.getFile(settings, coverName, coverFile).getOrThrow()) {
+                    if (remote.coverHash.isNotBlank() && coverFile.sha256() != remote.coverHash) {
+                        coverFile.delete()
+                        error("远端封面文件校验失败，请重新同步。")
+                    }
                     coverFile.absolutePath
                 } else {
                     ""
@@ -289,10 +297,17 @@ class WebDavSyncRepository(context: Context) {
         "${seed.sha256().take(24)}.${extension.trimStart('.').ifBlank { "bin" }}"
 
     private fun uniqueLocalFileName(remoteName: String): String {
-        val dot = remoteName.lastIndexOf('.')
-        val base = if (dot > 0) remoteName.substring(0, dot) else remoteName
-        val ext = if (dot > 0) remoteName.substring(dot) else ""
-        return "${base}-${System.currentTimeMillis()}$ext"
+        val safeName = remoteName.substringAfterLast('/').substringAfterLast('\\')
+        val dot = safeName.lastIndexOf('.')
+        val extension = if (dot > 0) {
+            safeName.substring(dot + 1)
+                .filter(Char::isLetterOrDigit)
+                .take(12)
+        } else {
+            ""
+        }
+        val suffix = extension.takeIf(String::isNotBlank)?.let { ".$it" }.orEmpty()
+        return "${remoteName.sha256().take(24)}-${System.currentTimeMillis()}$suffix"
     }
 
     private fun String.sha256(): String =
