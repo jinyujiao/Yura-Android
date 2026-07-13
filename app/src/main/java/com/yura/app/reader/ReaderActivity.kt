@@ -13,6 +13,8 @@ import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -226,6 +228,22 @@ class ReaderActivity : FragmentActivity() {
             onDispose { showControlsCallback = null }
         }
 
+        LaunchedEffect(controlsVisible) {
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            if (controlsVisible) {
+                insetsController.show(WindowInsetsCompat.Type.statusBars())
+            } else {
+                insetsController.hide(WindowInsetsCompat.Type.statusBars())
+            }
+        }
+
+        DisposableEffect(Unit) {
+            onDispose {
+                WindowCompat.getInsetsController(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.statusBars())
+            }
+        }
+
         LaunchedEffect(bookId) {
             state = openBook(bookId, effectiveReaderPreferences)
         }
@@ -293,7 +311,7 @@ class ReaderActivity : FragmentActivity() {
                         currentPage = page + 1
                         totalPages = total.coerceAtLeast(1)
                         progressLabel = "${((locator.locations.totalProgression ?: 0.0) * 100).toInt()}%"
-                        chapterTitle = locator.title.orEmpty()
+                        chapterTitle = ReaderChapterTitleResolver.resolve(current.publication, locator)
                     },
                 )
             }
