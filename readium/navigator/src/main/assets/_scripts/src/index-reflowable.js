@@ -7,8 +7,10 @@
 // Script used for reflowable resources.
 
 import "./index";
+import { paragraphFragmenter } from "./paragraph-fragmentation";
 
 window.readium.isReflowable = true;
+paragraphFragmenter.scheduleUpdate();
 
 document.addEventListener("DOMContentLoaded", function () {
   // Setups the `viewport` meta tag to disable zooming.

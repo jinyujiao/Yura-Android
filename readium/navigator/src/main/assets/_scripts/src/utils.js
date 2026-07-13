@@ -5,6 +5,7 @@
 //
 
 import { TextQuoteAnchor } from "./vendor/hypothesis/anchoring/types";
+import { paragraphFragmenter } from "./paragraph-fragmentation";
 
 // Catch JS errors to log them in the app.
 window.addEventListener(
@@ -21,6 +22,7 @@ window.addEventListener(
     const observer = new ResizeObserver(() => {
       requestAnimationFrame(() => {
         onViewportWidthChanged();
+        paragraphFragmenter.scheduleUpdate();
         snapCurrentOffset();
       });
     });
@@ -349,9 +351,11 @@ export function rangeFromLocator(locator) {
 /// User Settings.
 
 export function setCSSProperties(properties) {
+  paragraphFragmenter.prepareForLayout();
   for (const name in properties) {
     setProperty(name, properties[name]);
   }
+  paragraphFragmenter.scheduleUpdate();
 }
 
 // For setting user setting.
