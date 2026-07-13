@@ -508,19 +508,32 @@ class ReaderActivity : FragmentActivity() {
                 var readableIndex = 0;
                 for (var i = 0; i < nodes.length; i++) {
                     nodes[i].removeAttribute('data-tts-readable-idx');
-                    var text = cleanTtsText(nodes[i].innerText);
+                }
+                for (var i = 0; i < nodes.length; i++) {
+                    var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
+                    if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
+                    var text = cleanTtsText(nodes[i].readiumOriginalParagraphText || nodes[i].innerText);
                     if (!text || text.length < 2) continue;
-                    nodes[i].setAttribute('data-tts-readable-idx', readableIndex);
+                    var textNodes = fragmentId === null
+                        ? [nodes[i]]
+                        : nodes.filter(function(node) {
+                            return node.getAttribute('data-readium-paragraph-fragment') === fragmentId;
+                        });
+                    for (var j = 0; j < textNodes.length; j++) {
+                        textNodes[j].setAttribute('data-tts-readable-idx', readableIndex);
+                    }
                     readable.push(text);
-                    var rect = visibleRect(nodes[i]);
-                    if (rect) {
-                        var top = Math.max(0, rect.top);
-                        var left = Math.max(0, rect.left);
-                        if (top < bestTop || (top === bestTop && left < bestLeft)) {
-                            bestTop = top;
-                            bestLeft = left;
-                            firstVisible = readableIndex;
-                            foundVisible = true;
+                    for (var j = 0; j < textNodes.length; j++) {
+                        var rect = visibleRect(textNodes[j]);
+                        if (rect) {
+                            var top = Math.max(0, rect.top);
+                            var left = Math.max(0, rect.left);
+                            if (top < bestTop || (top === bestTop && left < bestLeft)) {
+                                bestTop = top;
+                                bestLeft = left;
+                                firstVisible = readableIndex;
+                                foundVisible = true;
+                            }
                         }
                     }
                     readableIndex++;
@@ -587,32 +600,34 @@ class ReaderActivity : FragmentActivity() {
             (function() {
                 var els = document.querySelectorAll('.tts-active');
                 for (var i = 0; i < els.length; i++) els[i].classList.remove('tts-active');
-                var target = document.querySelector('[data-tts-readable-idx="$domIndex"]');
-                if (target) {
-                    target.classList.add('tts-active');
-                    var rects = target.getClientRects();
+                var targets = document.querySelectorAll('[data-tts-readable-idx="$domIndex"]');
+                if (targets.length > 0) {
                     var best = null;
                     var bestArea = -1;
                     var comfortable = false;
-                    for (var i = 0; i < rects.length; i++) {
-                        var rect = rects[i];
-                        if (rect.width <= 0 || rect.height <= 0) continue;
-                        var left = Math.max(rect.left, 0);
-                        var top = Math.max(rect.top, 0);
-                        var right = Math.min(rect.right, window.innerWidth);
-                        var bottom = Math.min(rect.bottom, window.innerHeight);
-                        var area = Math.max(0, right - left) * Math.max(0, bottom - top);
-                        if (area > bestArea) {
-                            bestArea = area;
-                            best = rect;
-                        }
-                        if (
-                            rect.left >= 12 &&
-                            rect.right <= window.innerWidth - 12 &&
-                            rect.top >= window.innerHeight * 0.12 &&
-                            rect.bottom <= window.innerHeight * 0.82
-                        ) {
-                            comfortable = true;
+                    for (var targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+                        targets[targetIndex].classList.add('tts-active');
+                        var rects = targets[targetIndex].getClientRects();
+                        for (var i = 0; i < rects.length; i++) {
+                            var rect = rects[i];
+                            if (rect.width <= 0 || rect.height <= 0) continue;
+                            var left = Math.max(rect.left, 0);
+                            var top = Math.max(rect.top, 0);
+                            var right = Math.min(rect.right, window.innerWidth);
+                            var bottom = Math.min(rect.bottom, window.innerHeight);
+                            var area = Math.max(0, right - left) * Math.max(0, bottom - top);
+                            if (area > bestArea) {
+                                bestArea = area;
+                                best = rect;
+                            }
+                            if (
+                                rect.left >= 12 &&
+                                rect.right <= window.innerWidth - 12 &&
+                                rect.top >= window.innerHeight * 0.12 &&
+                                rect.bottom <= window.innerHeight * 0.82
+                            ) {
+                                comfortable = true;
+                            }
                         }
                     }
                     if (!comfortable && best) {
@@ -686,9 +701,20 @@ class ReaderActivity : FragmentActivity() {
                 var readableIndex = 0;
                 for (var i = 0; i < nodes.length; i++) {
                     nodes[i].removeAttribute('data-tts-readable-idx');
-                    var text = cleanTtsText(nodes[i].innerText);
+                }
+                for (var i = 0; i < nodes.length; i++) {
+                    var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
+                    if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
+                    var text = cleanTtsText(nodes[i].readiumOriginalParagraphText || nodes[i].innerText);
                     if (!text || text.length < 2) continue;
-                    nodes[i].setAttribute('data-tts-readable-idx', readableIndex);
+                    var textNodes = fragmentId === null
+                        ? [nodes[i]]
+                        : nodes.filter(function(node) {
+                            return node.getAttribute('data-readium-paragraph-fragment') === fragmentId;
+                        });
+                    for (var j = 0; j < textNodes.length; j++) {
+                        textNodes[j].setAttribute('data-tts-readable-idx', readableIndex);
+                    }
                     readableIndex++;
                 }
                 return readableIndex;

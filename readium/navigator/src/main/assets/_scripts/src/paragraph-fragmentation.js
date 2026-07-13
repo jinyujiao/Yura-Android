@@ -4,6 +4,7 @@ class ParagraphFragmenter {
   constructor(window) {
     this.window = window;
     this.fragmentations = [];
+    this.nextFragmentationId = 0;
     this.updateScheduled = false;
   }
 
@@ -60,10 +61,14 @@ class ParagraphFragmenter {
       return;
     }
 
-    const fragments = splitAtBoundaries(textNode.data, boundaries).map(
+    const originalText = textNode.data;
+    const fragmentationId = String(this.nextFragmentationId++);
+    const fragments = splitAtBoundaries(originalText, boundaries).map(
       (text, index, all) => {
         const fragment = paragraph.cloneNode(false);
-        fragment.setAttribute(FRAGMENT_ATTRIBUTE, "true");
+        fragment.setAttribute(FRAGMENT_ATTRIBUTE, fragmentationId);
+        fragment.readiumOriginalParagraphText = originalText;
+        fragment.readiumParagraphFragmentIndex = index;
         if (index > 0) {
           fragment.removeAttribute("id");
           fragment.style.setProperty("margin-top", "0", "important");
