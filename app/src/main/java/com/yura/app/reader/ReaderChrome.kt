@@ -48,7 +48,7 @@ fun ReaderHud(
             text = chapterTitle,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 56.dp, top = 34.dp, end = 56.dp, bottom = 14.dp)
+                .padding(start = 56.dp, top = 52.dp, end = 56.dp, bottom = 14.dp)
                 .align(Alignment.TopCenter),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
