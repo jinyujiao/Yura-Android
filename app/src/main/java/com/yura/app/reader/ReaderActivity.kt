@@ -13,8 +13,6 @@ import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -229,18 +227,19 @@ class ReaderActivity : FragmentActivity() {
         }
 
         LaunchedEffect(controlsVisible) {
-            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
             if (controlsVisible) {
-                insetsController.show(WindowInsetsCompat.Type.statusBars())
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
             } else {
-                insetsController.hide(WindowInsetsCompat.Type.statusBars())
+                window.setFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                )
             }
         }
 
         DisposableEffect(Unit) {
             onDispose {
-                WindowCompat.getInsetsController(window, window.decorView)
-                    .show(WindowInsetsCompat.Type.statusBars())
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
             }
         }
 
