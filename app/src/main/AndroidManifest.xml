@@ -31,9 +31,12 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
-        <activity android:name=".reader.ReaderActivity" />
+        <activity
+            android:name=".reader.ReaderActivity"
+            android:screenOrientation="@integer/activity_launch_orientation" />
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="@integer/activity_launch_orientation"
             android:exported="true"
             android:launchMode="singleTop">
             <intent-filter>

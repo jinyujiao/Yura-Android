@@ -1,0 +1,3 @@
+<resources>
+    <integer name="activity_launch_orientation">-1</integer>
+</resources>
