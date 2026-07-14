@@ -3,6 +3,7 @@
 package com.yura.app.reader
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -58,6 +59,7 @@ fun ReaderSettingsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = false,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
@@ -66,7 +68,8 @@ fun ReaderSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .heightIn(max = 680.dp),
+                .heightIn(max = 680.dp)
+                .overscroll(null),
             contentPadding = PaddingValues(start = 22.dp, top = 4.dp, end = 22.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {

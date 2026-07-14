@@ -1,9 +1,25 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("plugin.parcelize")
     alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
 }
+
+val appVersionProperties = Properties().apply {
+    rootProject.file("version.properties").inputStream().use(::load)
+}
+val releaseStoreFile = providers.gradleProperty("RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.yura.app"
@@ -13,10 +29,16 @@ android {
         applicationId = "com.yura.app"
         minSdk = (property("android.minSdk") as String).toInt()
         targetSdk = (property("android.targetSdk") as String).toInt()
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toIntOrNull()
-            ?: System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-            ?: 1
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orNull ?: "1.0.0"
+        val configuredVersionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toIntOrNull()
+            ?: appVersionProperties.getProperty("VERSION_CODE")?.toIntOrNull()
+            ?: error("VERSION_CODE is missing or invalid in version.properties")
+        val configuredVersionName = providers.gradleProperty("APP_VERSION_NAME").orNull
+            ?: appVersionProperties.getProperty("VERSION_NAME")
+            ?: error("VERSION_NAME is missing in version.properties")
+        require(configuredVersionCode > 0) { "VERSION_CODE must be greater than zero" }
+        require(configuredVersionName.isNotBlank()) { "VERSION_NAME must not be blank" }
+        versionCode = configuredVersionCode
+        versionName = configuredVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -28,12 +50,11 @@ android {
 
     signingConfigs {
         create("release") {
-            val storeFilePath = providers.gradleProperty("RELEASE_STORE_FILE").orNull
-            if (!storeFilePath.isNullOrBlank()) {
-                storeFile = file(storeFilePath)
-                storePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
-                keyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
-                keyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+            if (releaseSigningConfigured) {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -46,7 +67,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            if (!providers.gradleProperty("RELEASE_STORE_FILE").orNull.isNullOrBlank()) {
+            if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
@@ -71,6 +92,24 @@ kotlin {
     compilerOptions {
         languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_3
     }
+}
+
+val verifyReleaseSigningConfiguration = tasks.register("verifyReleaseSigningConfiguration") {
+    group = "verification"
+    description = "Fails when a formal release is requested without a complete signing configuration."
+    doLast {
+        check(releaseSigningConfigured) {
+            "Release signing is incomplete. Configure RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, " +
+                "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD in ~/.gradle/gradle.properties or CI secrets."
+        }
+        check(file(requireNotNull(releaseStoreFile)).isFile) {
+            "Release keystore does not exist: $releaseStoreFile"
+        }
+    }
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    dependsOn(verifyReleaseSigningConfiguration)
 }
 
 dependencies {

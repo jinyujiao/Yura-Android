@@ -15,9 +15,9 @@ object ReaderPreferencesStore {
     private const val PREFS_AUTO_THEME_KEY = "auto_theme"
 
     val defaults = EpubPreferences(
-        fontSize = 1.0,
+        fontSize = 1.3,
         lineHeight = 1.5,
-        paragraphIndent = 0.0,
+        paragraphIndent = 2.0,
         paragraphSpacing = 0.0,
         letterSpacing = 0.0,
         scroll = false,
@@ -46,7 +46,7 @@ object ReaderPreferencesStore {
 
     fun isAutoTheme(context: Context): Boolean =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(PREFS_AUTO_THEME_KEY, false)
+            .getBoolean(PREFS_AUTO_THEME_KEY, true)
 
     fun saveAutoTheme(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
