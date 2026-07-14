@@ -3,6 +3,8 @@ package com.yura.app.sync
 import android.content.Context
 import com.yura.app.data.Book
 import com.yura.app.data.DeletedBook
+import com.yura.app.data.DeletedReaderAnnotation
+import com.yura.app.data.ReaderAnnotation
 import com.yura.app.data.YuraDatabase
 import java.io.File
 import java.net.URI
@@ -18,6 +20,7 @@ data class WebDavSyncResult(
     val uploadedBooks: Int,
     val downloadedBooks: Int,
     val mergedProgress: Int,
+    val mergedAnnotations: Int,
 )
 
 class WebDavSyncRepository(context: Context) {
@@ -39,6 +42,7 @@ class WebDavSyncRepository(context: Context) {
 
                 val mergeResult = mergeRemote(remote)
                 val downloadedBooks = downloadMissingBooks(settings, remote)
+                val mergedAnnotations = mergeRemoteAnnotations(remote)
                 val local = buildSnapshot()
                 val uploadedBooks = uploadLocalBooks(settings, local, remote)
                 client.putTextIfUnchanged(
@@ -53,6 +57,7 @@ class WebDavSyncRepository(context: Context) {
                     uploadedBooks = uploadedBooks,
                     downloadedBooks = downloadedBooks,
                     mergedProgress = mergeResult.progressCount,
+                    mergedAnnotations = mergedAnnotations,
                 )
             }
         }
@@ -145,6 +150,7 @@ class WebDavSyncRepository(context: Context) {
                 dao.upsertDeletedBook(DeletedBook(remoteDeleted.identifier, remoteDeleted.deletedAt))
                 dao.bookByIdentifier(remoteDeleted.identifier)?.let { book ->
                     dao.deleteBookmarksForBook(book.id)
+                    dao.deleteAnnotationsForBook(book.id)
                     dao.deleteBook(book.id)
                     runCatching { book.localFile()?.delete() }
                     runCatching { book.cover.takeIf { it.isNotBlank() }?.let(::File)?.delete() }
@@ -167,9 +173,64 @@ class WebDavSyncRepository(context: Context) {
         return MergeResult(progressCount)
     }
 
+    private suspend fun mergeRemoteAnnotations(snapshot: SyncSnapshot): Int {
+        val localDeletedById = dao.deletedReaderAnnotations().associateBy { it.id }
+        snapshot.deletedAnnotations.forEach { remoteDeleted ->
+            if (remoteDeleted.id.isBlank() || remoteDeleted.bookIdentifier.isBlank() || remoteDeleted.deletedAt <= 0L) {
+                return@forEach
+            }
+            val localDeleted = localDeletedById[remoteDeleted.id]
+            if (AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeleted?.deletedAt, remoteDeleted.deletedAt)) {
+                dao.upsertDeletedReaderAnnotation(
+                    DeletedReaderAnnotation(
+                        id = remoteDeleted.id,
+                        bookIdentifier = remoteDeleted.bookIdentifier,
+                        deletedAt = remoteDeleted.deletedAt,
+                    ),
+                )
+                dao.deleteAnnotation(remoteDeleted.id)
+            }
+        }
+
+        val deletedById = dao.deletedReaderAnnotations().associateBy { it.id }
+        val booksByIdentifier = dao.allBooks().associateBy { it.identifier }
+        var merged = 0
+        snapshot.annotations.forEach { remote ->
+            if (
+                remote.id.isBlank() ||
+                remote.bookIdentifier.isBlank() ||
+                remote.locatorJson.isBlank() ||
+                remote.type !in setOf(ReaderAnnotation.TYPE_NOTE, ReaderAnnotation.TYPE_HIGHLIGHT)
+            ) {
+                return@forEach
+            }
+            val deletedAt = deletedById[remote.id]?.deletedAt
+            val localExists = dao.annotation(remote.id) != null
+            if (!AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(localExists, remote.createdAt, deletedAt)) {
+                return@forEach
+            }
+            val book = booksByIdentifier[remote.bookIdentifier] ?: return@forEach
+            dao.upsertAnnotation(
+                ReaderAnnotation(
+                    id = remote.id,
+                    bookId = book.id,
+                    type = remote.type,
+                    locatorJson = remote.locatorJson,
+                    note = remote.note,
+                    createdAt = remote.createdAt,
+                ),
+            )
+            merged++
+        }
+        return merged
+    }
+
     private suspend fun buildSnapshot(): SyncSnapshot {
-        dao.deleteExpiredTombstones(System.currentTimeMillis() - TOMBSTONE_RETENTION_MS)
+        val tombstoneCutoff = System.currentTimeMillis() - TOMBSTONE_RETENTION_MS
+        dao.deleteExpiredTombstones(tombstoneCutoff)
+        dao.deleteExpiredReaderAnnotationTombstones(tombstoneCutoff)
         val books = dao.allBooks()
+        val booksById = books.associateBy { it.id }
         val progress = books.map { book ->
             val bookFile = book.localFile()
             val coverFile = book.cover
@@ -192,9 +253,24 @@ class WebDavSyncRepository(context: Context) {
                 localCoverPath = coverFile?.absolutePath,
             )
         }
+        val annotations = dao.allAnnotations().mapNotNull { annotation ->
+            val bookIdentifier = booksById[annotation.bookId]?.identifier ?: return@mapNotNull null
+            SyncAnnotation(
+                id = annotation.id,
+                bookIdentifier = bookIdentifier,
+                type = annotation.type,
+                locatorJson = annotation.locatorJson,
+                note = annotation.note,
+                createdAt = annotation.createdAt,
+            )
+        }
         return SyncSnapshot(
             books = progress,
             deletedBooks = dao.deletedBooks().map { SyncDeletedBook(it.identifier, it.deletedAt) },
+            annotations = annotations,
+            deletedAnnotations = dao.deletedReaderAnnotations().map {
+                SyncDeletedAnnotation(it.id, it.bookIdentifier, it.deletedAt)
+            },
         )
     }
 
@@ -205,12 +281,16 @@ class WebDavSyncRepository(context: Context) {
     private data class SyncSnapshot(
         val books: List<SyncBook>,
         val deletedBooks: List<SyncDeletedBook> = emptyList(),
+        val annotations: List<SyncAnnotation> = emptyList(),
+        val deletedAnnotations: List<SyncDeletedAnnotation> = emptyList(),
     ) {
         fun toJson(): JSONObject =
             JSONObject()
-                .put("version", 4)
+                .put("version", 5)
                 .put("books", JSONArray().also { array -> books.forEach { array.put(it.toJson()) } })
                 .put("deletedBooks", JSONArray().also { array -> deletedBooks.forEach { array.put(it.toJson()) } })
+                .put("annotations", JSONArray().also { array -> annotations.forEach { array.put(it.toJson()) } })
+                .put("deletedAnnotations", JSONArray().also { array -> deletedAnnotations.forEach { array.put(it.toJson()) } })
 
         companion object {
             fun fromJson(json: JSONObject): SyncSnapshot =
@@ -220,6 +300,12 @@ class WebDavSyncRepository(context: Context) {
                     }.orEmpty(),
                     deletedBooks = json.optJSONArray("deletedBooks")?.let { array ->
                         List(array.length()) { SyncDeletedBook.fromJson(array.getJSONObject(it)) }
+                    }.orEmpty(),
+                    annotations = json.optJSONArray("annotations")?.let { array ->
+                        List(array.length()) { SyncAnnotation.fromJson(array.getJSONObject(it)) }
+                    }.orEmpty(),
+                    deletedAnnotations = json.optJSONArray("deletedAnnotations")?.let { array ->
+                        List(array.length()) { SyncDeletedAnnotation.fromJson(array.getJSONObject(it)) }
                     }.orEmpty(),
                 )
         }
@@ -236,6 +322,53 @@ class WebDavSyncRepository(context: Context) {
         companion object {
             fun fromJson(json: JSONObject): SyncDeletedBook = SyncDeletedBook(
                 identifier = json.optString("identifier"),
+                deletedAt = json.optLong("deletedAt"),
+            )
+        }
+    }
+
+    private data class SyncAnnotation(
+        val id: String,
+        val bookIdentifier: String,
+        val type: String,
+        val locatorJson: String,
+        val note: String,
+        val createdAt: Long,
+    ) {
+        fun toJson(): JSONObject = JSONObject()
+            .put("id", id)
+            .put("bookIdentifier", bookIdentifier)
+            .put("type", type)
+            .put("locator", locatorJson)
+            .put("note", note)
+            .put("createdAt", createdAt)
+
+        companion object {
+            fun fromJson(json: JSONObject): SyncAnnotation = SyncAnnotation(
+                id = json.optString("id"),
+                bookIdentifier = json.optString("bookIdentifier"),
+                type = json.optString("type"),
+                locatorJson = json.optString("locator"),
+                note = json.optString("note"),
+                createdAt = json.optLong("createdAt"),
+            )
+        }
+    }
+
+    private data class SyncDeletedAnnotation(
+        val id: String,
+        val bookIdentifier: String,
+        val deletedAt: Long,
+    ) {
+        fun toJson(): JSONObject = JSONObject()
+            .put("id", id)
+            .put("bookIdentifier", bookIdentifier)
+            .put("deletedAt", deletedAt)
+
+        companion object {
+            fun fromJson(json: JSONObject): SyncDeletedAnnotation = SyncDeletedAnnotation(
+                id = json.optString("id"),
+                bookIdentifier = json.optString("bookIdentifier"),
                 deletedAt = json.optLong("deletedAt"),
             )
         }

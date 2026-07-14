@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Book::class, Bookmark::class, DeletedBook::class],
-    version = 4,
+    entities = [Book::class, Bookmark::class, DeletedBook::class, ReaderAnnotation::class, DeletedReaderAnnotation::class],
+    version = 6,
     exportSchema = false,
 )
 abstract class YuraDatabase : RoomDatabase() {
@@ -29,6 +29,8 @@ abstract class YuraDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_1_2)
                     .addMigrations(MIGRATION_2_3)
                     .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_4_5)
+                    .addMigrations(MIGRATION_5_6)
                     .build()
                     .also { instance = it }
             }
@@ -53,6 +55,20 @@ abstract class YuraDatabase : RoomDatabase() {
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS deleted_books (identifier TEXT NOT NULL, deleted_at INTEGER NOT NULL, PRIMARY KEY(identifier))")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS reader_annotations (id TEXT NOT NULL, book_id INTEGER NOT NULL, type TEXT NOT NULL, locator TEXT NOT NULL, note TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_reader_annotations_book_id ON reader_annotations (book_id)")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS deleted_reader_annotations (id TEXT NOT NULL, book_identifier TEXT NOT NULL, deleted_at INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_deleted_reader_annotations_book_identifier ON deleted_reader_annotations (book_identifier)")
             }
         }
     }

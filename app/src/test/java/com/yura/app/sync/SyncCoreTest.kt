@@ -23,4 +23,37 @@ class SyncCoreTest {
         assertFalse(SyncProgressMergePolicy.shouldApplyRemoteProgress(10, "{\"locations\":{}}", 10))
         assertFalse(SyncProgressMergePolicy.shouldApplyRemoteProgress(20, "", 10))
     }
+
+    @Test
+    fun annotationTombstonePreventsResurrection() {
+        assertFalse(
+            AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
+                localExists = false,
+                remoteCreatedAt = 100,
+                deletedAt = 120,
+            ),
+        )
+        assertTrue(
+            AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
+                localExists = false,
+                remoteCreatedAt = 130,
+                deletedAt = 120,
+            ),
+        )
+        assertFalse(
+            AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
+                localExists = true,
+                remoteCreatedAt = 130,
+                deletedAt = null,
+            ),
+        )
+    }
+
+    @Test
+    fun onlyAppliesNewerValidAnnotationDeletion() {
+        assertTrue(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = null, remoteDeletedAt = 100))
+        assertTrue(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = 90, remoteDeletedAt = 100))
+        assertFalse(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = 100, remoteDeletedAt = 100))
+        assertFalse(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = null, remoteDeletedAt = 0))
+    }
 }

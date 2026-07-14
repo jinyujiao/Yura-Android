@@ -47,6 +47,9 @@ interface YuraDao {
     @Query("DELETE FROM ${Bookmark.TABLE_NAME} WHERE ${Bookmark.BOOK_ID} = :bookId")
     suspend fun deleteBookmarksForBook(bookId: Long)
 
+    @Query("DELETE FROM ${ReaderAnnotation.TABLE_NAME} WHERE ${ReaderAnnotation.BOOK_ID} = :bookId")
+    suspend fun deleteAnnotationsForBook(bookId: Long)
+
     @Query("UPDATE ${Book.TABLE_NAME} SET ${Book.PROGRESSION} = :locator, ${Book.LAST_READ_DATE} = :lastReadDate WHERE ${Book.ID} = :id")
     suspend fun saveProgression(id: Long, locator: String, lastReadDate: Long)
 
@@ -61,4 +64,31 @@ interface YuraDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertBookmark(bookmark: Bookmark): Long
+
+    @Query("SELECT * FROM ${ReaderAnnotation.TABLE_NAME} ORDER BY ${ReaderAnnotation.CREATED_AT} DESC")
+    fun annotations(): Flow<List<ReaderAnnotation>>
+
+    @Query("SELECT * FROM ${ReaderAnnotation.TABLE_NAME} ORDER BY ${ReaderAnnotation.CREATED_AT} DESC")
+    suspend fun allAnnotations(): List<ReaderAnnotation>
+
+    @Query("SELECT * FROM ${ReaderAnnotation.TABLE_NAME} WHERE ${ReaderAnnotation.ID} = :annotationId LIMIT 1")
+    suspend fun annotation(annotationId: String): ReaderAnnotation?
+
+    @Query("SELECT * FROM ${ReaderAnnotation.TABLE_NAME} WHERE ${ReaderAnnotation.BOOK_ID} = :bookId ORDER BY ${ReaderAnnotation.CREATED_AT}")
+    suspend fun annotationsForBook(bookId: Long): List<ReaderAnnotation>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAnnotation(annotation: ReaderAnnotation)
+
+    @Query("DELETE FROM ${ReaderAnnotation.TABLE_NAME} WHERE ${ReaderAnnotation.ID} = :annotationId")
+    suspend fun deleteAnnotation(annotationId: String)
+
+    @Query("SELECT * FROM ${DeletedReaderAnnotation.TABLE_NAME}")
+    suspend fun deletedReaderAnnotations(): List<DeletedReaderAnnotation>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDeletedReaderAnnotation(annotation: DeletedReaderAnnotation)
+
+    @Query("DELETE FROM ${DeletedReaderAnnotation.TABLE_NAME} WHERE ${DeletedReaderAnnotation.DELETED_AT} < :before")
+    suspend fun deleteExpiredReaderAnnotationTombstones(before: Long)
 }

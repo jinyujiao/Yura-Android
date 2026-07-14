@@ -17,6 +17,7 @@ internal class BookDeletionService(
 
     suspend fun removeLocal(book: Book) {
         dao.deleteBookmarksForBook(book.id)
+        dao.deleteAnnotationsForBook(book.id)
         dao.deleteBook(book.id)
         withContext(Dispatchers.IO) {
             runCatching {

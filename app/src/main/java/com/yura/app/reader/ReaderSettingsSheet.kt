@@ -1,16 +1,19 @@
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+
 package com.yura.app.reader
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,14 +26,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import java.util.Locale
-import org.readium.r2.navigator.preferences.ColumnCount
+import kotlin.math.roundToInt
 import org.readium.r2.navigator.epub.EpubPreferences
-import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Spread
 import org.readium.r2.navigator.preferences.Theme
 
@@ -44,6 +54,7 @@ fun ReaderSettingsSheet(
     onPreferencesChange: (EpubPreferences) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var previewPreferences by remember(preferences) { mutableStateOf(preferences) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -55,155 +66,240 @@ fun ReaderSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .heightIn(max = 620.dp)
-                .padding(horizontal = 22.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
+                .heightIn(max = 680.dp),
+            contentPadding = PaddingValues(start = 22.dp, top = 4.dp, end = 22.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
                 Text(
-                    "\u9605\u8bfb\u8bbe\u7f6e",
+                    "阅读设置",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
+
             item {
-                PreferenceSectionTitle("\u4e3b\u9898")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PreferenceChoice(
-                        text = "\u81ea\u52a8",
-                        selected = autoTheme,
-                        onClick = { onAutoThemeChange(true) },
-                    )
-                    PreferenceChoice(
-                        text = "\u6d45\u8272",
-                        selected = !autoTheme && preferences.theme == Theme.LIGHT,
-                        onClick = {
-                            onAutoThemeChange(false)
-                            onPreferencesChange(preferences.copy(theme = Theme.LIGHT))
+                PreferenceSectionTitle("主题")
+                LazyRow(
+                    contentPadding = PaddingValues(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        PreferenceChoice(
+                            text = "自动",
+                            selected = autoTheme,
+                            onClick = { onAutoThemeChange(true) },
+                        )
+                    }
+                    item {
+                        PreferenceChoice(
+                            text = "浅色",
+                            selected = !autoTheme && preferences.theme == Theme.LIGHT,
+                            onClick = {
+                                onAutoThemeChange(false)
+                                onPreferencesChange(preferences.copy(theme = Theme.LIGHT))
+                            },
+                        )
+                    }
+                    item {
+                        PreferenceChoice(
+                            text = "深色",
+                            selected = !autoTheme && preferences.theme == Theme.DARK,
+                            onClick = {
+                                onAutoThemeChange(false)
+                                onPreferencesChange(preferences.copy(theme = Theme.DARK))
+                            },
+                        )
+                    }
+                    item {
+                        PreferenceChoice(
+                            text = "米色",
+                            selected = !autoTheme && preferences.theme == Theme.SEPIA,
+                            onClick = {
+                                onAutoThemeChange(false)
+                                onPreferencesChange(preferences.copy(theme = Theme.SEPIA))
+                            },
+                        )
+                    }
+                }
+            }
+
+            item {
+                ReadingPreview(previewPreferences)
+            }
+
+            item {
+                PreferenceCard(title = "文字") {
+                    PreferenceSlider(
+                        title = "字号",
+                        valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
+                        value = (preferences.fontSize ?: 1.0).toFloat(),
+                        valueRange = 0.8f..2.0f,
+                        steps = 11,
+                        onValueChange = { value -> previewPreferences = previewPreferences.copy(fontSize = value.toDouble()) },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false))
                         },
                     )
-                    PreferenceChoice(
-                        text = "\u6df1\u8272",
-                        selected = !autoTheme && preferences.theme == Theme.DARK,
-                        onClick = {
-                            onAutoThemeChange(false)
-                            onPreferencesChange(preferences.copy(theme = Theme.DARK))
+                    PreferenceSlider(
+                        title = "行高",
+                        valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
+                        value = (preferences.lineHeight ?: 1.5).toFloat(),
+                        valueRange = 1.0f..2.2f,
+                        steps = 5,
+                        onValueChange = { value -> previewPreferences = previewPreferences.copy(lineHeight = value.toDouble()) },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false))
                         },
                     )
-                    PreferenceChoice(
-                        text = "\u7c73\u8272",
-                        selected = !autoTheme && preferences.theme == Theme.SEPIA,
-                        onClick = {
-                            onAutoThemeChange(false)
-                            onPreferencesChange(preferences.copy(theme = Theme.SEPIA))
+                    PreferenceSlider(
+                        title = "字间距",
+                        valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
+                        value = (preferences.letterSpacing ?: 0.0).toFloat(),
+                        valueRange = 0f..1f,
+                        steps = 9,
+                        onValueChange = { value -> previewPreferences = previewPreferences.copy(letterSpacing = value.toDouble()) },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false))
                         },
                     )
                 }
             }
+
             item {
-                PreferenceSlider(
-                    title = "\u5b57\u53f7",
-                    valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
-                    value = (preferences.fontSize ?: 1.0).toFloat(),
-                    valueRange = 0.8f..2.0f,
-                    steps = 11,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false))
-                    },
-                )
-            }
-            item {
-                PreferenceSlider(
-                    title = "\u884c\u9ad8",
-                    valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
-                    value = (preferences.lineHeight ?: 1.5).toFloat(),
-                    valueRange = 1.0f..2.2f,
-                    steps = 5,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false))
-                    },
-                )
-            }
-            item {
-                PreferenceSlider(
-                    title = "\u6bb5\u9996\u7f29\u8fdb",
-                    valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} \u5b57",
-                    value = (preferences.paragraphIndent ?: 0.0).toFloat(),
-                    valueRange = 0f..4f,
-                    steps = 3,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(paragraphIndent = value.toInt().toDouble(), publisherStyles = false))
-                    },
-                )
-            }
-            item {
-                PreferenceSlider(
-                    title = "\u6bb5\u95f4\u8ddd",
-                    valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
-                    value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
-                    valueRange = 0f..2f,
-                    steps = 9,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false))
-                    },
-                )
-            }
-            item {
-                PreferenceSlider(
-                    title = "\u5b57\u95f4\u8ddd",
-                    valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
-                    value = (preferences.letterSpacing ?: 0.0).toFloat(),
-                    valueRange = 0f..1f,
-                    steps = 9,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false))
-                    },
-                )
-            }
-            item {
-                PreferenceSwitch(
-                    title = "\u6eda\u52a8\u9605\u8bfb",
-                    subtitle = "\u5173\u95ed\u540e\u4f7f\u7528\u5206\u9875\u9605\u8bfb",
-                    checked = preferences.scroll == true,
-                    onCheckedChange = { checked -> onPreferencesChange(preferences.copy(scroll = checked)) },
-                )
-            }
-            item {
-                PreferenceSwitch(
-                    title = "\u4f7f\u7528\u4e66\u7c4d\u81ea\u5e26\u7248\u5f0f",
-                    subtitle = "\u5f00\u542f\u540e\uff0c\u90e8\u5206\u5b57\u53f7\u3001\u884c\u9ad8\u3001\u7f29\u8fdb\u548c\u5b57\u95f4\u8ddd\u4f1a\u7531 EPUB \u539f\u59cb\u6837\u5f0f\u51b3\u5b9a",
-                    checked = preferences.publisherStyles != false,
-                    onCheckedChange = { checked -> onPreferencesChange(preferences.copy(publisherStyles = checked)) },
-                )
-            }
-            item {
-                PreferenceSectionTitle("\u7248\u5f0f")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PreferenceChoice(
-                        text = "\u81ea\u52a8",
-                        selected = preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false, publisherStyles = false))
+                PreferenceCard(title = "段落") {
+                    PreferenceSlider(
+                        title = "段首缩进",
+                        valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} 字",
+                        value = (preferences.paragraphIndent ?: 0.0).toFloat(),
+                        valueRange = 0f..4f,
+                        steps = 3,
+                        onValueChange = { value -> previewPreferences = previewPreferences.copy(paragraphIndent = value.toDouble()) },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(paragraphIndent = value.roundToInt().toDouble(), publisherStyles = false))
                         },
                     )
-                    PreferenceChoice(
-                        text = "\u5355\u680f",
-                        selected = preferences.columnCount == ColumnCount.ONE,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false, publisherStyles = false))
-                        },
-                    )
-                    PreferenceChoice(
-                        text = "\u53cc\u680f",
-                        selected = preferences.columnCount == ColumnCount.TWO,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false, publisherStyles = false))
+                    PreferenceSlider(
+                        title = "段间距",
+                        valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
+                        value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
+                        valueRange = 0f..2f,
+                        steps = 9,
+                        onValueChange = { value -> previewPreferences = previewPreferences.copy(paragraphSpacing = value.toDouble()) },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false))
                         },
                     )
                 }
             }
+
+            item {
+                PreferenceCard(title = "阅读模式") {
+                    PreferenceSwitch(
+                        title = "滚动阅读",
+                        subtitle = "关闭后使用分页阅读",
+                        checked = preferences.scroll == true,
+                        onCheckedChange = { checked -> onPreferencesChange(preferences.copy(scroll = checked)) },
+                    )
+                    PreferenceSwitch(
+                        title = "使用书籍自带版式",
+                        subtitle = "开启后，字号、行高和段落样式可能由 EPUB 原始样式决定",
+                        checked = preferences.publisherStyles != false,
+                        onCheckedChange = { checked -> onPreferencesChange(preferences.copy(publisherStyles = checked)) },
+                    )
+                    if (preferences.publisherStyles != false) {
+                        Text(
+                            text = "调整自定义排版时，将自动关闭书籍自带版式。",
+                            color = MaterialTheme.colorScheme.tertiary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    PreferenceSectionTitle("分页栏数")
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf("自动", "单栏", "双栏")) { label ->
+                            val selected = when (label) {
+                                "自动" -> preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO
+                                "单栏" -> preferences.columnCount == ColumnCount.ONE
+                                else -> preferences.columnCount == ColumnCount.TWO
+                            }
+                            PreferenceChoice(
+                                text = label,
+                                selected = selected,
+                                onClick = {
+                                    val updated = when (label) {
+                                        "自动" -> preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false)
+                                        "单栏" -> preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false)
+                                        else -> preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false)
+                                    }
+                                    onPreferencesChange(updated)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                TextButton(
+                    onClick = {
+                        onPreferencesChange(ReaderPreferencesStore.defaults.copy(theme = preferences.theme))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("恢复默认排版", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadingPreview(preferences: EpubPreferences) {
+    val scale = (preferences.fontSize ?: 1.0).toFloat().coerceIn(0.8f, 2f)
+    val fontSize = 16f * scale
+    val lineHeight = fontSize * (preferences.lineHeight ?: 1.5).toFloat().coerceIn(1f, 2.2f)
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "排版预览",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "阅读让时间慢下来，也让遥远的世界变得触手可及。",
+                fontSize = fontSize.sp,
+                lineHeight = lineHeight.sp,
+                letterSpacing = (preferences.letterSpacing ?: 0.0).toFloat().em,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreferenceCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            PreferenceSectionTitle(title)
+            content()
         }
     }
 }
@@ -216,19 +312,35 @@ private fun PreferenceSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
     onValueChange: (Float) -> Unit,
+    onValueChangeFinished: (Float) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    var sliderValue by remember(value) { mutableFloatStateOf(value) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PreferenceSectionTitle(title)
-            Text(valueLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                when (title) {
+                    "字号" -> "${(sliderValue * 100).toInt()}%"
+                    "行高" -> String.format(Locale.ROOT, "%.1f", sliderValue)
+                    "段首缩进" -> "${sliderValue.roundToInt()} 字"
+                    "段间距", "字间距" -> "${(sliderValue * 100).toInt()}%"
+                    else -> valueLabel
+                },
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
         }
         Slider(
-            value = value,
-            onValueChange = onValueChange,
+            value = sliderValue,
+            onValueChange = { value ->
+                sliderValue = value
+                onValueChange(value)
+            },
+            onValueChangeFinished = { onValueChangeFinished(sliderValue) },
             valueRange = valueRange,
             steps = steps,
         )
@@ -242,26 +354,19 @@ private fun PreferenceSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-        shape = RoundedCornerShape(22.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold)
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -311,4 +416,3 @@ private fun roundToStep(value: Float, step: Float): Double =
 
 fun Float.formatSpeed(): String =
     if (this % 1f == 0f) toInt().toString() else String.format(Locale.ROOT, "%.1f", this)
-

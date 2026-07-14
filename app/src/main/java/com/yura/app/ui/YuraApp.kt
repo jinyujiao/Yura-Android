@@ -5,9 +5,11 @@ package com.yura.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -46,6 +49,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -77,6 +81,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -91,7 +96,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
+import com.yura.app.ui.icons.YuraIcons
+import com.yura.app.ui.notes.NotesScreen
 import com.yura.app.library.LibraryUiState
+import com.yura.app.notes.NotesViewModel
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
@@ -118,9 +126,10 @@ import org.readium.r2.navigator.preferences.Spread
 import org.readium.r2.navigator.preferences.Theme
 
 
-private enum class RootTab(val label: String, val icon: String) {
-    Library("\u4e66\u67b6", "\u2302"),
-    Settings("\u8bbe\u7f6e", "\u2699"),
+private enum class RootTab(val label: String, val icon: ImageVector) {
+    Library("书架", YuraIcons.Library),
+    Notes("笔记", YuraIcons.Note),
+    Settings("设置", YuraIcons.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,6 +139,8 @@ fun YuraApp() {
     var tab by remember { mutableStateOf(RootTab.Library) }
     val libraryViewModel: LibraryViewModel = viewModel()
     val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+    val notesViewModel: NotesViewModel = viewModel()
+    val notesState by notesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
@@ -137,6 +148,7 @@ fun YuraApp() {
     var searchQuery by remember { mutableStateOf("") }
     var shelfSort by remember { mutableStateOf(ShelfSort.RecentlyRead) }
     var sortMenuVisible by remember { mutableStateOf(false) }
+    var selectedNotesBookId by remember { mutableStateOf<Long?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -160,7 +172,16 @@ fun YuraApp() {
             libraryViewModel.clearMessage()
         }
     }
+    LaunchedEffect(notesState.message) {
+        notesState.message?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            notesViewModel.clearMessage()
+        }
+    }
 
+    BackHandler(enabled = tab == RootTab.Notes && selectedNotesBookId != null) {
+        selectedNotesBookId = null
+    }
     BackHandler(enabled = tab == RootTab.Library && sortMenuVisible) {
         sortMenuVisible = false
     }
@@ -209,13 +230,22 @@ fun YuraApp() {
                     modifier = Modifier.statusBarsPadding(),
                 )
             } else {
+                val notesBook = notesState.groups.firstOrNull { it.book.id == selectedNotesBookId }?.book
                 TopAppBar(
                     title = {
                         Text(
-                            text = tab.label,
+                            text = notesBook?.title ?: tab.label,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Black,
+                            maxLines = 1,
                         )
+                    },
+                    navigationIcon = {
+                        if (tab == RootTab.Notes && selectedNotesBookId != null) {
+                            IconButton(onClick = { selectedNotesBookId = null }) {
+                                Icon(YuraIcons.Back, contentDescription = "返回笔记列表")
+                            }
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
@@ -263,6 +293,13 @@ fun YuraApp() {
                                 coverLauncher.launch(arrayOf("image/*"))
                             },
                         )
+                        RootTab.Notes -> NotesScreen(
+                            state = notesState,
+                            selectedBookId = selectedNotesBookId,
+                            onSelectBook = { selectedNotesBookId = it },
+                            onBackToBooks = { selectedNotesBookId = null },
+                            onDeleteAnnotation = notesViewModel::deleteAnnotation,
+                        )
                         RootTab.Settings -> SettingsHubScreen(
                             ttsController = ttsController,
                             active = tab == item,
@@ -289,51 +326,109 @@ private fun FloatingPillNavigation(
     onSelected: (RootTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val glassShape = RoundedCornerShape(999.dp)
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        tonalElevation = 10.dp,
-        shadowElevation = 14.dp,
-        shape = RoundedCornerShape(999.dp),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 12.dp,
+        shape = glassShape,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f)),
         modifier = modifier
-            .width(320.dp)
-            .height(68.dp),
+            .fillMaxWidth(0.78f)
+            .widthIn(max = 340.dp)
+            .height(64.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                        ),
+                    ),
+                )
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f), glassShape)
+                .padding(6.dp),
         ) {
-            RootTab.entries.forEach { item ->
-                val isSelected = selected == item
-                Surface(
-                    onClick = { onSelected(item) },
-                    modifier = Modifier.weight(1f),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    contentColor = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
-                    },
-                    shape = RoundedCornerShape(999.dp),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .height(52.dp)
-                            .padding(horizontal = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RootTab.entries.forEach { item ->
+                    val isSelected = selected == item
+                    val indicatorColor by animateColorAsState(
+                        targetValue = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        } else {
+                            Color.Transparent
+                        },
+                        label = "glass-tab-indicator",
+                    )
+                    val iconColor by animateColorAsState(
+                        targetValue = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
+                        },
+                        label = "glass-tab-icon",
+                    )
+                    val labelColor by animateColorAsState(
+                        targetValue = if (isSelected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                        },
+                        label = "glass-tab-label",
+                    )
+                    Surface(
+                        onClick = { onSelected(item) },
+                        modifier = Modifier.weight(1f),
+                        color = Color.Transparent,
+                        contentColor = iconColor,
+                        shape = glassShape,
                     ) {
-                        Text(
-                            item.icon,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
-                        )
-                        Text(
-                            item.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .height(52.dp)
+                                .padding(horizontal = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(indicatorColor, CircleShape)
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                                CircleShape,
+                                            )
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label,
+                                    tint = iconColor,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                item.label,
+                                color = labelColor,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

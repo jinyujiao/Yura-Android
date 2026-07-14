@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.compose.activity)
     implementation(libs.bundles.compose)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.common)

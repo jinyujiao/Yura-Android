@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,10 +32,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yura.app.ui.icons.YuraIcons
 
 @Composable
 fun ReaderHud(
@@ -179,7 +182,7 @@ fun ReaderTopBar(title: String, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) {
-                Text("\u2039", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineSmall)
+                Icon(YuraIcons.Back, contentDescription = "返回书架", tint = MaterialTheme.colorScheme.onSurface)
             }
             Text(
                 text = title,
@@ -216,25 +219,29 @@ fun ReaderControlBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ReaderControlAction(label = "\u76ee\u5f55", onClick = onToc)
-            ReaderControlAction(label = "Aa", onClick = onSettings)
-            ReaderControlAction(label = "\u6717\u8bfb", onClick = onTts)
+            ReaderControlAction(icon = YuraIcons.MenuBook, label = "目录", onClick = onToc)
+            ReaderControlAction(icon = YuraIcons.Font, label = "排版", onClick = onSettings)
+            ReaderControlAction(icon = YuraIcons.ReadAloud, label = "朗读", onClick = onTts)
         }
     }
 }
 
 @Composable
-private fun ReaderControlAction(label: String, onClick: () -> Unit) {
+private fun ReaderControlAction(icon: ImageVector, label: String, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
     ) {
-        Text(
-            label,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

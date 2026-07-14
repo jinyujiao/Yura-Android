@@ -52,11 +52,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -126,7 +128,9 @@ class ReaderActivity : FragmentActivity() {
     private var asset: Asset? = null
     private var publication: Publication? = null
     private var navigatorFragment: EpubNavigatorFragment? = null
+    private var selectionActionModeCallback: ReaderSelectionActionModeCallback? = null
     private var showControlsCallback: (() -> Unit)? = null
+    private var requestNoteCallback: ((Locator) -> Unit)? = null
     private val progressionSaver by lazy { ReaderProgressionSaver(lifecycleScope, dao) }
     private val mediaIndentFixRunnables = mutableListOf<Runnable>()
     private var currentTtsWebView: WebView? = null
@@ -211,6 +215,8 @@ class ReaderActivity : FragmentActivity() {
         var tocVisible by remember { mutableStateOf(false) }
         var settingsVisible by remember { mutableStateOf(false) }
         var ttsVisible by remember { mutableStateOf(false) }
+        var pendingNoteLocator by remember { mutableStateOf<Locator?>(null) }
+        var noteDraft by remember { mutableStateOf("") }
         var readerPreferences by remember { mutableStateOf(loadReaderPreferences()) }
         var autoReaderTheme by remember { mutableStateOf(ReaderPreferencesStore.isAutoTheme(this)) }
         val systemDark = isSystemInDarkTheme()
@@ -227,7 +233,14 @@ class ReaderActivity : FragmentActivity() {
             showControlsCallback = {
                 controlsVisible = !controlsVisible
             }
-            onDispose { showControlsCallback = null }
+            requestNoteCallback = { locator ->
+                noteDraft = ""
+                pendingNoteLocator = locator
+            }
+            onDispose {
+                showControlsCallback = null
+                requestNoteCallback = null
+            }
         }
 
         LaunchedEffect(controlsVisible) {
@@ -371,6 +384,62 @@ class ReaderActivity : FragmentActivity() {
                             navigatorFragment?.go(locator, animated = true)
                         }
                         tocVisible = false
+                    },
+                )
+            }
+            pendingNoteLocator?.let { locator ->
+                AlertDialog(
+                    onDismissRequest = { pendingNoteLocator = null },
+                    shape = RoundedCornerShape(28.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    title = {
+                        Text(
+                            text = "添加笔记",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            val selectedText = locator.text.highlight.orEmpty().trim()
+                            if (selectedText.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.38f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = selectedText,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = noteDraft,
+                                onValueChange = { noteDraft = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("笔记内容") },
+                                placeholder = { Text("写下你的想法") },
+                                minLines = 3,
+                                maxLines = 7,
+                                shape = RoundedCornerShape(18.dp),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = noteDraft.isNotBlank(),
+                            onClick = {
+                                selectionActionModeCallback?.saveNote(locator, noteDraft.trim())
+                                pendingNoteLocator = null
+                            },
+                        ) { Text("保存", fontWeight = FontWeight.Bold) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingNoteLocator = null }) { Text("取消") }
                     },
                 )
             }
@@ -868,6 +937,14 @@ class ReaderActivity : FragmentActivity() {
         data: ReaderState.Ready,
         onPageChanged: (Int, Int, Locator) -> Unit,
     ) {
+        selectionActionModeCallback = ReaderSelectionActionModeCallback(
+            context = this,
+            bookId = data.book.id,
+            dao = dao,
+            scope = lifecycleScope,
+            navigator = { navigatorFragment },
+            onNoteRequested = { locator -> requestNoteCallback?.invoke(locator) },
+        )
         navigatorFragment = ReaderNavigatorInstaller.install(
             activity = this,
             containerId = containerId,
@@ -883,7 +960,9 @@ class ReaderActivity : FragmentActivity() {
                     showControlsCallback?.invoke()
                 }
             },
+            selectionActionModeCallback = checkNotNull(selectionActionModeCallback),
         )
+        selectionActionModeCallback?.refreshDecorations()
         applyMediaIndentFix(data.initialPreferences)
     }
 

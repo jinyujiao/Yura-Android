@@ -46,6 +46,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -77,6 +78,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -91,6 +93,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
+import com.yura.app.ui.icons.YuraIcons
 import com.yura.app.library.LibraryUiState
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
@@ -287,7 +290,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
 }
 
 @Composable
-fun SettingsEntryRow(title: String, subtitle: String, icon: String, onClick: () -> Unit) {
+fun SettingsEntryRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -305,14 +308,14 @@ fun SettingsEntryRow(title: String, subtitle: String, icon: String, onClick: () 
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(icon, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold)
                 Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("\u203a", style = MaterialTheme.typography.titleLarge)
+            Icon(YuraIcons.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

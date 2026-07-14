@@ -91,6 +91,7 @@ import androidx.work.WorkInfo
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
+import com.yura.app.ui.icons.YuraIcons
 import com.yura.app.library.LibraryUiState
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
@@ -176,22 +177,22 @@ private fun SettingsHome(onOpen: (SettingsDetail) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SettingsEntryRow("\u6717\u8bfb\u8bbe\u7f6e", "\u4e91\u7aef\u8bed\u97f3\u3001\u97f3\u8272\u3001API Key \u548c\u6d4b\u8bd5\u6717\u8bfb", "\u266a") {
+            SettingsEntryRow("朗读设置", "云端语音、音色、API Key 和测试朗读", YuraIcons.ReadAloud) {
                 onOpen(SettingsDetail.Tts)
             }
         }
         item {
-            SettingsEntryRow("\u9605\u8bfb\u8bbe\u7f6e", "\u5b57\u53f7\u3001\u884c\u9ad8\u3001\u6bb5\u95f4\u8ddd\u3001\u7f29\u8fdb\u3001\u5b57\u95f4\u8ddd\u548c\u7248\u5f0f", "Aa") {
+            SettingsEntryRow("阅读设置", "字号、行高、段间距、缩进、字间距和版式", YuraIcons.Font) {
                 onOpen(SettingsDetail.Reading)
             }
         }
         item {
-            SettingsEntryRow("\u540c\u6b65\u8bbe\u7f6e", "WebDAV", "\u21c4") {
+            SettingsEntryRow("同步设置", "WebDAV", YuraIcons.Sync) {
                 onOpen(SettingsDetail.WebDav)
             }
         }
         item {
-            SettingsEntryRow("\u5173\u4e8e", "\u7248\u672c\u548c\u9879\u76ee\u4fe1\u606f", "i") {
+            SettingsEntryRow("关于", "版本和项目信息", YuraIcons.Info) {
                 onOpen(SettingsDetail.About)
             }
         }

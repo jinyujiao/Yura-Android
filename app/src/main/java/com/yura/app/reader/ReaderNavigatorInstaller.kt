@@ -1,6 +1,7 @@
 package com.yura.app.reader
 
 import android.os.Bundle
+import android.view.ActionMode
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.commitNow
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -17,11 +18,14 @@ internal object ReaderNavigatorInstaller {
         tag: String,
         onPageChanged: (Int, Int, Locator) -> Unit,
         onCenterTap: () -> Unit,
+        selectionActionModeCallback: ActionMode.Callback,
     ): EpubNavigatorFragment? {
         val fragmentFactory = data.navigatorFactory.createFragmentFactory(
             initialLocator = data.initialLocator,
             initialPreferences = data.initialPreferences,
-            configuration = EpubNavigatorFragment.Configuration(),
+            configuration = EpubNavigatorFragment.Configuration(
+                selectionActionModeCallback = selectionActionModeCallback,
+            ),
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
                     onPageChanged(pageIndex, totalPages, locator)

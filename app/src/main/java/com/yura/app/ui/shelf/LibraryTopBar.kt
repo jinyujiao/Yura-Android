@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -24,9 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yura.app.ui.icons.YuraIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +89,8 @@ fun LibraryTopBar(
         },
         actions = {
             CompactToolbarButton(
-                symbol = if (searchExpanded) "×" else "⌕",
+                icon = if (searchExpanded) YuraIcons.Close else YuraIcons.Search,
+                contentDescription = if (searchExpanded) "关闭搜索" else "搜索书籍",
                 onClick = {
                     val expanded = !searchExpanded
                     onSearchExpandedChange(expanded)
@@ -94,7 +98,7 @@ fun LibraryTopBar(
                 },
             )
             Box {
-                CompactToolbarButton(symbol = "≡", onClick = { onSortMenuVisibleChange(true) })
+                CompactToolbarButton(icon = YuraIcons.Sort, contentDescription = "书架排序", onClick = { onSortMenuVisibleChange(true) })
                 DropdownMenu(
                     expanded = sortMenuVisible,
                     onDismissRequest = { onSortMenuVisibleChange(false) },
@@ -137,7 +141,8 @@ fun LibraryTopBar(
                 }
             }
             CompactToolbarButton(
-                symbol = if (importing) "…" else "+",
+                icon = YuraIcons.Add,
+                contentDescription = if (importing) "正在导入" else "导入书籍",
                 onClick = onImport,
                 enabled = !importing,
             )
@@ -152,16 +157,16 @@ fun LibraryTopBar(
 
 @Composable
 private fun CompactToolbarButton(
-    symbol: String,
+    icon: ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
-        Text(
-            text = symbol,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Black,
-            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
