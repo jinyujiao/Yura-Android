@@ -11,6 +11,12 @@ VERSION_NAME=1.0.0
 - `VERSION_NAME`：用户可见的语义化版本号，格式为 `主版本.次版本.修订版本`。
 - 普通 Gradle 构建不会修改版本号；只有 `release.ps1` 会按要求递增。
 
+## 发布前开源许可检查
+
+- 新增或升级运行时依赖后，核对其许可证并更新 `THIRD_PARTY_NOTICES.md`。
+- 保持 `readium/LICENSE` 与当前 Readium 上游 BSD 3-Clause 文本一致。
+- 同步更新 `app/src/main/assets/licenses/open_source_licenses.txt`，确保正式 APK/AAB 内可以查看完整声明。
+- 在应用“设置 → 关于 → 开源许可”中确认许可内容可以正常打开和滚动。
 ## 本机签名配置
 
 在 `~/.gradle/gradle.properties` 中配置，禁止提交到仓库：

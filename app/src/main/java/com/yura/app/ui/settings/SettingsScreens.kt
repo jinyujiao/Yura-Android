@@ -1,4 +1,4 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package com.yura.app.ui.settings
 
@@ -123,6 +123,7 @@ private enum class SettingsDetail {
     Reading,
     WebDav,
     About,
+    OpenSourceLicenses,
 }
 
 @Composable
@@ -137,7 +138,7 @@ fun SettingsHubScreen(
     val systemDark = isSystemInDarkTheme()
 
     BackHandler(enabled = active && detail != null) {
-        detail = null
+        detail = if (detail == SettingsDetail.OpenSourceLicenses) SettingsDetail.About else null
     }
 
     when (detail) {
@@ -164,7 +165,10 @@ fun SettingsHubScreen(
             WebDavSettingsPage()
         }
         SettingsDetail.About -> SettingsDetailScaffold("\u5173\u4e8e", onBack = { detail = null }) {
-            SettingsInfoCard("Yura\n\u4e00\u4e2a\u4e13\u6ce8 EPUB \u9605\u8bfb\u548c\u6717\u8bfb\u7684\u5c0f\u5e94\u7528\u3002")
+            AboutSettingsPage(onOpenLicenses = { detail = SettingsDetail.OpenSourceLicenses })
+        }
+        SettingsDetail.OpenSourceLicenses -> SettingsDetailScaffold("\u5f00\u6e90\u8bb8\u53ef", onBack = { detail = SettingsDetail.About }) {
+            OpenSourceLicensesPage()
         }
     }
 }
@@ -220,7 +224,7 @@ private fun SettingsDetailScaffold(
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
         }
-        content()
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
     }
 }
 

@@ -86,9 +86,14 @@ docs/       项目维护文档
 - 凭据通过 Android Keystore 支持的加密存储保存在设备上。
 - 请勿把签名证书、密码、API Key、`local.properties` 或生成的正式安装包提交到仓库。
 
-## 项目状态
+## 许可证
 
-Yura 正在持续开发中。首次正式发布版本为 `1.0.0`。仓库当前未提供独立的根目录许可证文件；在许可证明确前，请勿假定代码可按某个开源许可证再分发。
+- Yura 原创代码采用 [Apache License 2.0](LICENSE)。
+- `readium/` 中的 Readium Kotlin Toolkit 修改及 Readium CSS 仍采用 [BSD 3-Clause](readium/LICENSE)。
+- 其他依赖和内置字体按各自许可证分发，完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 正式 APK/AAB 内同样包含上述开源许可，可在“设置 → 关于 → 开源许可”中查看。
+
+Yura 正在持续开发中。首次正式发布版本为 `1.0.0`。
 
 ---
 
@@ -123,4 +128,6 @@ For production signing, version management, local release verification, and GitH
 
 Do not commit release keystores, passwords, API credentials, `local.properties`, APK/AAB artifacts, or generated files under `dist/`. Network-backed TTS and WebDAV are optional and only operate after user configuration.
 
-The repository currently has no root license file. Do not assume redistribution rights under a specific open-source license until one is added.
+### License
+
+Original Yura source code is licensed under the [Apache License 2.0](LICENSE). Readium sources and Readium CSS retain their [BSD 3-Clause license](readium/LICENSE). Other dependencies and bundled fonts retain their respective licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The same notices are available inside the app under Settings → About → Open-source licenses.
