@@ -2,14 +2,13 @@
 
 package com.yura.app.ui
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -104,6 +103,11 @@ import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
 import com.yura.app.reader.tts.SimpleTtsController
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.rememberHazeState
 import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
 import com.yura.app.ui.shelf.LibraryTopBar
@@ -134,7 +138,10 @@ private enum class RootTab(val label: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun YuraApp() {
+fun YuraApp(
+    externalPublicationUri: Uri? = null,
+    onExternalPublicationHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(RootTab.Library) }
     val libraryViewModel: LibraryViewModel = viewModel()
@@ -142,6 +149,7 @@ fun YuraApp() {
     val notesViewModel: NotesViewModel = viewModel()
     val notesState by notesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val navigationHazeState = rememberHazeState()
     val ttsController = remember { SimpleTtsController(context.applicationContext) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
     var searchExpanded by remember { mutableStateOf(false) }
@@ -176,6 +184,13 @@ fun YuraApp() {
         notesState.message?.let { message ->
             snackbarHostState.showSnackbar(message)
             notesViewModel.clearMessage()
+        }
+    }
+    LaunchedEffect(externalPublicationUri) {
+        externalPublicationUri?.let { uri ->
+            tab = RootTab.Library
+            libraryViewModel.importPublication(uri)
+            onExternalPublicationHandled()
         }
     }
 
@@ -262,54 +277,61 @@ fun YuraApp() {
                 .background(MaterialTheme.colorScheme.background)
                 .padding(padding),
         ) {
-            RootTab.entries.forEach { item ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = if (tab == item) 1f else 0f }
-                        .zIndex(if (tab == item) 1f else 0f)
-                        .then(
-                            if (tab == item) Modifier else Modifier.pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        awaitPointerEvent().changes.forEach { it.consume() }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(navigationHazeState),
+            ) {
+                RootTab.entries.forEach { item ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = if (tab == item) 1f else 0f }
+                            .zIndex(if (tab == item) 1f else 0f)
+                            .then(
+                                if (tab == item) Modifier else Modifier.pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent().changes.forEach { it.consume() }
+                                        }
                                     }
-                                }
-                            },
-                        ),
-                ) {
-                    when (item) {
-                        RootTab.Library -> LibraryScreen(
-                            state = libraryState,
-                            query = searchQuery,
-                            sort = shelfSort,
-                            onOpenReader = { book ->
-                                context.startActivity(ReaderActivity.intent(context, book.id))
-                            },
-                            onRemoveFromDevice = { books -> books.forEach(libraryViewModel::removeLocalBook) },
-                            onDeleteEverywhere = { books -> books.forEach(libraryViewModel::deleteBookEverywhere) },
-                            onChangeCover = { book ->
-                                coverTargetBook = book
-                                coverLauncher.launch(arrayOf("image/*"))
-                            },
-                        )
-                        RootTab.Notes -> NotesScreen(
-                            state = notesState,
-                            selectedBookId = selectedNotesBookId,
-                            onSelectBook = { selectedNotesBookId = it },
-                            onBackToBooks = { selectedNotesBookId = null },
-                            onDeleteAnnotation = notesViewModel::deleteAnnotation,
-                        )
-                        RootTab.Settings -> SettingsHubScreen(
-                            ttsController = ttsController,
-                            active = tab == item,
-                        )
+                                },
+                            ),
+                    ) {
+                        when (item) {
+                            RootTab.Library -> LibraryScreen(
+                                state = libraryState,
+                                query = searchQuery,
+                                sort = shelfSort,
+                                onOpenReader = { book ->
+                                    context.startActivity(ReaderActivity.intent(context, book.id))
+                                },
+                                onRemoveFromDevice = { books -> books.forEach(libraryViewModel::removeLocalBook) },
+                                onDeleteEverywhere = { books -> books.forEach(libraryViewModel::deleteBookEverywhere) },
+                                onChangeCover = { book ->
+                                    coverTargetBook = book
+                                    coverLauncher.launch(arrayOf("image/*"))
+                                },
+                            )
+                            RootTab.Notes -> NotesScreen(
+                                state = notesState,
+                                selectedBookId = selectedNotesBookId,
+                                onSelectBook = { selectedNotesBookId = it },
+                                onBackToBooks = { selectedNotesBookId = null },
+                                onDeleteAnnotation = notesViewModel::deleteAnnotation,
+                            )
+                            RootTab.Settings -> SettingsHubScreen(
+                                ttsController = ttsController,
+                                active = tab == item,
+                            )
+                        }
                     }
                 }
-            }
+                }
             FloatingPillNavigation(
                 selected = tab,
                 onSelected = { tab = it },
+                hazeState = navigationHazeState,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .zIndex(10f)
@@ -324,6 +346,7 @@ fun YuraApp() {
 private fun FloatingPillNavigation(
     selected: RootTab,
     onSelected: (RootTab) -> Unit,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val glassShape = RoundedCornerShape(999.dp)
@@ -332,7 +355,6 @@ private fun FloatingPillNavigation(
         contentColor = MaterialTheme.colorScheme.onSurface,
         shadowElevation = 12.dp,
         shape = glassShape,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f)),
         modifier = modifier
             .fillMaxWidth(0.78f)
             .widthIn(max = 340.dp)
@@ -340,15 +362,18 @@ private fun FloatingPillNavigation(
     ) {
         Box(
             modifier = Modifier
+                .hazeEffect(
+                    state = hazeState,
+                    style = HazeMaterials.thin(),
+                )
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.44f),
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
                         ),
                     ),
                 )
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f), glassShape)
                 .padding(6.dp),
         ) {
             Row(
@@ -399,18 +424,7 @@ private fun FloatingPillNavigation(
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
-                                    .background(indicatorColor, CircleShape)
-                                    .then(
-                                        if (isSelected) {
-                                            Modifier.border(
-                                                1.dp,
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                                CircleShape,
-                                            )
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
+                                    .background(indicatorColor, CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(

@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.work.runtime)
     implementation(libs.coil.compose)
+    implementation(libs.haze)
+    implementation(libs.haze.materials)
     implementation(libs.jsoup)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)

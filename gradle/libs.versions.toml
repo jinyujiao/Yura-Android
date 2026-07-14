@@ -69,6 +69,7 @@ mockk = "1.14.9"
 
 timber = "5.0.1"
 coil = "2.7.0"
+haze = "1.7.2"
 
 
 [libraries]
@@ -138,6 +139,8 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
+haze-materials = { group = "dev.chrisbanes.haze", name = "haze-materials", version.ref = "haze" }
 
 plugin-android = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
