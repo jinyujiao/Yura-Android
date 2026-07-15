@@ -13,6 +13,8 @@ class MicrosoftVoiceGroupingTest {
             voices = listOf(
                 voice("en-US-GuyNeural", "Guy · en-US", "en-US"),
                 voice("zh-CN-YunxiNeural", "云希 · zh-CN", "zh-CN"),
+                voice("zh-CN-guangxi-YunqiNeural", "云奇 · zh-CN-guangxi", "zh-CN-guangxi"),
+                voice("zh-CN-henan-YundengNeural", "云登 · zh-CN-henan", "zh-CN-henan"),
                 voice("en-US-JennyNeural", "Jenny · en-US", "en-US"),
                 voice("zh-TW-HsiaoChenNeural", "曉臻 · zh-TW", "zh-TW"),
             ),
@@ -20,6 +22,7 @@ class MicrosoftVoiceGroupingTest {
         )
 
         assertEquals(listOf("zh-CN", "zh-TW", "en-US"), groups.map { it.locale })
+        assertEquals(3, groups.first().voices.size)
         assertEquals(2, groups.last().voices.size)
         assertTrue(groups.first().label.contains("中文"))
         assertTrue(groups.last().label.contains("英语"))
@@ -34,6 +37,23 @@ class MicrosoftVoiceGroupingTest {
 
         assertEquals("pt-BR", groups.single().locale)
         assertTrue(groups.single().label.contains("葡萄牙语"))
+    }
+
+    @Test
+    fun mergesChineseDialectLocalesIntoMainlandChina() {
+        val groups = groupMicrosoftVoices(
+            voices = listOf(
+                voice("zh-CN-XiaoxiaoNeural", "晓晓 · zh-CN", "zh-CN"),
+                voice("zh-CN-liaoning-XiaobeiNeural", "晓北 · zh-CN-liaoning", "zh-CN-liaoning"),
+                voice("zh-CN-shaanxi-XiaoniNeural", "晓妮 · zh-CN-shaanxi", "zh-CN-shaanxi"),
+            ),
+            displayLocale = Locale.SIMPLIFIED_CHINESE,
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals("zh-CN", groups.single().locale)
+        assertEquals(3, groups.single().voices.size)
+        assertEquals("中文（中国）", groups.single().label)
     }
 
     private fun voice(shortName: String, displayName: String, locale: String) =

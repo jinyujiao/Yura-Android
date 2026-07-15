@@ -487,11 +487,21 @@ internal data class MicrosoftVoiceGroup(
     val voices: List<SimpleTtsController.MicrosoftVoice>,
 )
 
+internal fun microsoftVoiceGroupLocaleTag(rawLocale: String): String {
+    val normalized = rawLocale.trim().replace('_', '-').ifBlank { return "und" }
+    val locale = Locale.forLanguageTag(normalized)
+    val language = locale.language.ifBlank { return "und" }
+    return when {
+        locale.country.isNotBlank() -> "$language-${locale.country}"
+        locale.script.isNotBlank() -> "$language-${locale.script}"
+        else -> language
+    }
+}
 internal fun groupMicrosoftVoices(
     voices: List<SimpleTtsController.MicrosoftVoice>,
     displayLocale: Locale = Locale.SIMPLIFIED_CHINESE,
 ): List<MicrosoftVoiceGroup> = voices
-    .groupBy { voice -> voice.locale.trim().replace('_', '-').ifBlank { "und" } }
+    .groupBy { voice -> microsoftVoiceGroupLocaleTag(voice.locale) }
     .map { (localeTag, localeVoices) ->
         val locale = Locale.forLanguageTag(localeTag)
         val language = locale.getDisplayLanguage(displayLocale).ifBlank { "其他语言" }
