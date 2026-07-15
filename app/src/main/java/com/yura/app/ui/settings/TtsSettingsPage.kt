@@ -1,134 +1,104 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
-
 package com.yura.app.ui.settings
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarData
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
-import androidx.work.WorkManager
-import androidx.work.WorkInfo
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
-import com.yura.app.data.Book
-import com.yura.app.ui.icons.YuraIcons
-import com.yura.app.library.LibraryUiState
-import com.yura.app.library.LibraryViewModel
-import com.yura.app.reader.ReaderActivity
-import com.yura.app.reader.ReaderPreferencesStore
 import com.yura.app.reader.tts.SimpleTtsController
-import com.yura.app.sync.WebDavClient
-import com.yura.app.ui.shelf.LibraryScreen
-import com.yura.app.ui.shelf.LibraryTopBar
-import com.yura.app.ui.shelf.ShelfSort
-import com.yura.app.ui.shelf.ShelfBookFilter
-import com.yura.app.sync.WebDavSettings
-import com.yura.app.sync.WebDavSettingsStore
-import com.yura.app.sync.WebDavSyncWorker
-import com.yura.app.sync.WebDavSyncRepository
-import java.io.File
-import java.text.DateFormat
-import java.util.Date
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import org.readium.r2.navigator.epub.EpubPreferences
-import org.readium.r2.navigator.preferences.ColumnCount
-import org.readium.r2.navigator.preferences.Spread
-import org.readium.r2.navigator.preferences.Theme
-
+import com.yura.app.ui.icons.YuraIcons
+import java.util.Locale
 
 @Composable
 fun CleanTtsSettingsPage(controller: SimpleTtsController) {
     val uiState by controller.state.collectAsStateWithLifecycle()
-    var providerMenuOpen by remember { mutableStateOf(false) }
-    var mimoVoiceMenuOpen by remember { mutableStateOf(false) }
-    var microsoftVoiceMenuOpen by remember { mutableStateOf(false) }
+    var providerDialogOpen by remember { mutableStateOf(false) }
+    var mimoVoiceDialogOpen by remember { mutableStateOf(false) }
+    var microsoftVoiceDialogOpen by remember { mutableStateOf(false) }
+    var microsoftLocale by remember { mutableStateOf<String?>(null) }
     var mimoKey by remember { mutableStateOf(controller.currentMimoApiKey()) }
     var microsoftKey by remember { mutableStateOf(controller.currentMicrosoftApiKey()) }
     var microsoftRegion by remember(uiState.microsoftRegion) { mutableStateOf(uiState.microsoftRegion) }
+
+    if (providerDialogOpen) {
+        ProviderPickerDialog(
+            selectedProvider = uiState.provider,
+            onSelect = { provider ->
+                controller.selectProvider(provider)
+                providerDialogOpen = false
+            },
+            onDismiss = { providerDialogOpen = false },
+        )
+    }
+
+    if (mimoVoiceDialogOpen) {
+        SimpleVoicePickerDialog(
+            title = "选择 MiMo 音色",
+            subtitle = "选择用于云端朗读的声音",
+            voices = SimpleTtsController.MIMO_VOICES,
+            selectedVoice = uiState.mimoVoice,
+            onSelect = { voice ->
+                controller.setMimoVoice(voice)
+                mimoVoiceDialogOpen = false
+            },
+            onDismiss = { mimoVoiceDialogOpen = false },
+        )
+    }
+
+    if (microsoftVoiceDialogOpen) {
+        MicrosoftVoicePickerDialog(
+            voices = uiState.microsoftVoices,
+            selectedVoice = uiState.microsoftVoice,
+            selectedLocale = microsoftLocale,
+            onLocaleChange = { microsoftLocale = it },
+            onSelect = { voice ->
+                controller.setMicrosoftVoice(voice.shortName)
+                microsoftLocale = null
+                microsoftVoiceDialogOpen = false
+            },
+            onDismiss = {
+                microsoftLocale = null
+                microsoftVoiceDialogOpen = false
+            },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -136,45 +106,23 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SettingsGroup(title = "\u8bed\u97f3\u670d\u52a1") {
-                SettingDropdownRow(
-                    title = "\u9ed8\u8ba4\u670d\u52a1",
+            SettingsGroup(title = "语音服务") {
+                SettingTextRow(
+                    title = "默认服务",
                     value = uiState.provider.label,
-                    expanded = providerMenuOpen,
-                    onExpandedChange = { providerMenuOpen = it },
-                ) {
-                    SimpleTtsController.Provider.entries.forEach { provider ->
-                        DropdownMenuItem(
-                            text = { Text(provider.label) },
-                            onClick = {
-                                controller.selectProvider(provider)
-                                providerMenuOpen = false
-                            },
-                        )
-                    }
-                }
+                    onClick = { providerDialogOpen = true },
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 when (uiState.provider) {
                     SimpleTtsController.Provider.SYSTEM -> {
-                        SettingTextRow("\u7cfb\u7edf\u6717\u8bfb", uiState.engineName.ifBlank { "\u7cfb\u7edf\u9ed8\u8ba4\u6717\u8bfb\u5f15\u64ce" })
+                        SettingTextRow("系统朗读", uiState.engineName.ifBlank { "系统默认朗读引擎" })
                     }
                     SimpleTtsController.Provider.MIMO -> {
-                        SettingDropdownRow(
-                            title = "MiMo \u97f3\u8272",
+                        SettingTextRow(
+                            title = "MiMo 音色",
                             value = uiState.mimoVoice,
-                            expanded = mimoVoiceMenuOpen,
-                            onExpandedChange = { mimoVoiceMenuOpen = it },
-                        ) {
-                            SimpleTtsController.MIMO_VOICES.forEach { voice ->
-                                DropdownMenuItem(
-                                    text = { Text(voice) },
-                                    onClick = {
-                                        controller.setMimoVoice(voice)
-                                        mimoVoiceMenuOpen = false
-                                    },
-                                )
-                            }
-                        }
+                            onClick = { mimoVoiceDialogOpen = true },
+                        )
                         SettingsTextField(
                             value = mimoKey,
                             onValueChange = {
@@ -182,7 +130,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                                 controller.setMimoApiKey(it)
                             },
                             label = "MiMo API Key",
-                            placeholder = if (uiState.hasMimoApiKey) "\u5df2\u4fdd\u5b58\uff0c\u8f93\u5165\u65b0 key \u53ef\u8986\u76d6" else "\u8bf7\u8f93\u5165 MiMo API key",
+                            placeholder = if (uiState.hasMimoApiKey) "已保存，输入新 key 可覆盖" else "请输入 MiMo API key",
                             password = true,
                         )
                     }
@@ -191,22 +139,14 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                             .firstOrNull { it.shortName == uiState.microsoftVoice }
                             ?.displayName
                             ?: uiState.microsoftVoice
-                        SettingDropdownRow(
-                            title = "Microsoft \u97f3\u8272",
+                        SettingTextRow(
+                            title = "Microsoft 音色",
                             value = selectedMicrosoftVoice,
-                            expanded = microsoftVoiceMenuOpen,
-                            onExpandedChange = { microsoftVoiceMenuOpen = it },
-                        ) {
-                            uiState.microsoftVoices.forEach { voice ->
-                                DropdownMenuItem(
-                                    text = { Text(voice.displayName) },
-                                    onClick = {
-                                        controller.setMicrosoftVoice(voice.shortName)
-                                        microsoftVoiceMenuOpen = false
-                                    },
-                                )
-                            }
-                        }
+                            onClick = {
+                                microsoftLocale = null
+                                microsoftVoiceDialogOpen = true
+                            },
+                        )
                         SettingsTextField(
                             value = microsoftRegion,
                             onValueChange = {
@@ -214,7 +154,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                                 controller.setMicrosoftRegion(it)
                             },
                             label = "Azure Region",
-                            placeholder = "\u4f8b\u5982 eastasia / japaneast",
+                            placeholder = "例如 eastasia / japaneast",
                         )
                         SettingsTextField(
                             value = microsoftKey,
@@ -223,7 +163,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                                 controller.setMicrosoftApiKey(it)
                             },
                             label = "Azure Speech Key",
-                            placeholder = if (uiState.hasMicrosoftApiKey) "\u5df2\u4fdd\u5b58\uff0c\u8f93\u5165\u65b0 key \u53ef\u8986\u76d6" else "\u8bf7\u8f93\u5165 Azure Speech key",
+                            placeholder = if (uiState.hasMicrosoftApiKey) "已保存，输入新 key 可覆盖" else "请输入 Azure Speech key",
                             password = true,
                         )
                         Row(
@@ -237,10 +177,10 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                                 enabled = !uiState.microsoftVoicesLoading,
                                 onClick = { controller.refreshMicrosoftVoices() },
                             ) {
-                                Text(if (uiState.microsoftVoicesLoading) "\u5237\u65b0\u4e2d" else "\u5237\u65b0\u97f3\u8272")
+                                Text(if (uiState.microsoftVoicesLoading) "刷新中" else "刷新音色")
                             }
                             Text(
-                                text = "\u5df2\u52a0\u8f7d ${uiState.microsoftVoices.size} \u4e2a\u97f3\u8272",
+                                text = "已加载 ${uiState.microsoftVoices.size} 个音色",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -250,7 +190,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
             }
         }
         item {
-            SettingsGroup(title = "\u6d4b\u8bd5") {
+            SettingsGroup(title = "测试") {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -262,19 +202,19 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(onClick = { controller.testVoice() }) {
-                            Text(if (uiState.state == SimpleTtsController.State.LOADING) "\u51c6\u5907\u4e2d" else "\u6d4b\u8bd5\u8bed\u97f3")
+                            Text(if (uiState.state == SimpleTtsController.State.LOADING) "准备中" else "测试语音")
                         }
                         TextButton(onClick = { controller.stop() }) {
-                            Text("\u505c\u6b62")
+                            Text("停止")
                         }
                     }
                     Text(
                         text = when {
                             uiState.errorMessage != null -> uiState.errorMessage.orEmpty()
-                            uiState.state == SimpleTtsController.State.PLAYING -> "\u6b63\u5728\u64ad\u653e\uff1a${uiState.currentSentence}"
-                            uiState.state == SimpleTtsController.State.LOADING -> "\u6b63\u5728\u51c6\u5907\u97f3\u9891..."
-                            uiState.state == SimpleTtsController.State.PAUSED -> "\u5df2\u6682\u505c"
-                            else -> "\u5f53\u524d\u670d\u52a1\uff1a${uiState.provider.label}\u3002\u70b9\u51fb\u6d4b\u8bd5\u8bed\u97f3\u540e\u5e94\u8be5\u542c\u5230\u58f0\u97f3\u6216\u770b\u5230\u9519\u8bef\u4fe1\u606f\u3002"
+                            uiState.state == SimpleTtsController.State.PLAYING -> "正在播放：${uiState.currentSentence}"
+                            uiState.state == SimpleTtsController.State.LOADING -> "正在准备音频..."
+                            uiState.state == SimpleTtsController.State.PAUSED -> "已暂停"
+                            else -> "当前服务：${uiState.provider.label}。点击测试语音后应该听到声音或看到错误信息。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (uiState.errorMessage != null) {
@@ -288,6 +228,289 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
         }
     }
 }
+
+@Composable
+private fun ProviderPickerDialog(
+    selectedProvider: SimpleTtsController.Provider,
+    onSelect: (SimpleTtsController.Provider) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    SettingsPickerDialog(
+        title = "选择默认服务",
+        subtitle = "新开始的朗读将使用所选服务",
+        onDismiss = onDismiss,
+    ) {
+        items(SimpleTtsController.Provider.entries, key = { it.name }) { provider ->
+            val subtitle = when (provider) {
+                SimpleTtsController.Provider.SYSTEM -> "使用手机已安装的朗读引擎"
+                SimpleTtsController.Provider.MIMO -> "小米云端自然语音"
+                SimpleTtsController.Provider.MICROSOFT -> "Microsoft Azure Speech 云端音色"
+            }
+            PickerOptionRow(
+                title = provider.label,
+                subtitle = subtitle,
+                selected = provider == selectedProvider,
+                onClick = { onSelect(provider) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SimpleVoicePickerDialog(
+    title: String,
+    subtitle: String,
+    voices: List<String>,
+    selectedVoice: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    SettingsPickerDialog(title = title, subtitle = subtitle, onDismiss = onDismiss) {
+        items(voices, key = { it }) { voice ->
+            PickerOptionRow(
+                title = voice,
+                selected = voice == selectedVoice,
+                onClick = { onSelect(voice) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MicrosoftVoicePickerDialog(
+    voices: List<SimpleTtsController.MicrosoftVoice>,
+    selectedVoice: String,
+    selectedLocale: String?,
+    onLocaleChange: (String?) -> Unit,
+    onSelect: (SimpleTtsController.MicrosoftVoice) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val groups = remember(voices) { groupMicrosoftVoices(voices) }
+    val activeGroup = groups.firstOrNull { it.locale == selectedLocale }
+
+    SettingsPickerDialog(
+        title = activeGroup?.label ?: "选择语言",
+        subtitle = if (activeGroup == null) {
+            "${groups.size} 个语言与地区 · ${voices.size} 个音色"
+        } else {
+            "${activeGroup.voices.size} 个可用音色"
+        },
+        onBack = activeGroup?.let { { onLocaleChange(null) } },
+        onDismiss = onDismiss,
+    ) {
+        if (activeGroup == null) {
+            if (groups.isEmpty()) {
+                item {
+                    PickerEmptyState("暂无可用音色，请先填写 Azure 配置并刷新音色。")
+                }
+            } else {
+                items(groups, key = { it.locale }) { group ->
+                    val containsSelectedVoice = group.voices.any { it.shortName == selectedVoice }
+                    PickerOptionRow(
+                        title = group.label,
+                        subtitle = buildString {
+                            if (containsSelectedVoice) append("当前音色 · ")
+                            append("${group.voices.size} 个音色 · ${group.locale}")
+                        },
+                        trailingChevron = true,
+                        onClick = { onLocaleChange(group.locale) },
+                    )
+                }
+            }
+        } else {
+            items(activeGroup.voices, key = { it.shortName }) { voice ->
+                PickerOptionRow(
+                    title = voice.displayName.substringBeforeLast(" · ${voice.locale}"),
+                    subtitle = voice.shortName,
+                    selected = voice.shortName == selectedVoice,
+                    onClick = { onSelect(voice) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPickerDialog(
+    title: String,
+    subtitle: String,
+    onDismiss: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .widthIn(max = 520.dp)
+                .heightIn(max = 640.dp),
+            shape = RoundedCornerShape(30.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(YuraIcons.Back, contentDescription = "返回")
+                        }
+                    } else {
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                    ) {
+                        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(YuraIcons.Close, contentDescription = "关闭")
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    content = content,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickerOptionRow(
+    title: String,
+    onClick: () -> Unit,
+    subtitle: String? = null,
+    selected: Boolean = false,
+    trailingChevron: Boolean = false,
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+        } else {
+            Color.Transparent
+        },
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        YuraIcons.Check,
+                        contentDescription = "已选择",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            } else if (trailingChevron) {
+                Icon(
+                    YuraIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickerEmptyState(message: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            message,
+            modifier = Modifier.padding(18.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+internal data class MicrosoftVoiceGroup(
+    val locale: String,
+    val label: String,
+    val voices: List<SimpleTtsController.MicrosoftVoice>,
+)
+
+internal fun groupMicrosoftVoices(
+    voices: List<SimpleTtsController.MicrosoftVoice>,
+    displayLocale: Locale = Locale.SIMPLIFIED_CHINESE,
+): List<MicrosoftVoiceGroup> = voices
+    .groupBy { voice -> voice.locale.trim().replace('_', '-').ifBlank { "und" } }
+    .map { (localeTag, localeVoices) ->
+        val locale = Locale.forLanguageTag(localeTag)
+        val language = locale.getDisplayLanguage(displayLocale).ifBlank { "其他语言" }
+        val country = locale.getDisplayCountry(displayLocale)
+        MicrosoftVoiceGroup(
+            locale = localeTag,
+            label = if (country.isBlank()) language else "$language（$country）",
+            voices = localeVoices.sortedBy { it.displayName.lowercase(displayLocale) },
+        )
+    }
+    .sortedWith(
+        compareBy<MicrosoftVoiceGroup> {
+            when (Locale.forLanguageTag(it.locale).language) {
+                "zh" -> 0
+                "en" -> 1
+                else -> 2
+            }
+        }.thenBy { it.label },
+    )
 
 @Composable
 fun SettingsEntryRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
@@ -319,4 +542,3 @@ fun SettingsEntryRow(title: String, subtitle: String, icon: ImageVector, onClick
         }
     }
 }
-
