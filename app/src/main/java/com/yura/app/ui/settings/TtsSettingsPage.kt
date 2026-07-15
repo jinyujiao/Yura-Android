@@ -137,7 +137,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                     SimpleTtsController.Provider.MICROSOFT -> {
                         val selectedMicrosoftVoice = uiState.microsoftVoices
                             .firstOrNull { it.shortName == uiState.microsoftVoice }
-                            ?.displayName
+                            ?.compactDisplayName()
                             ?: uiState.microsoftVoice
                         SettingTextRow(
                             title = "Microsoft 音色",
@@ -481,6 +481,12 @@ private fun PickerEmptyState(message: String) {
     }
 }
 
+private fun SimpleTtsController.MicrosoftVoice.compactDisplayName(): String =
+    displayName
+        .substringBeforeLast(" · $locale")
+        .removePrefix("Microsoft ")
+        .trim()
+        .ifBlank { shortName }
 internal data class MicrosoftVoiceGroup(
     val locale: String,
     val label: String,

@@ -83,6 +83,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -383,8 +384,22 @@ fun SettingTextRow(title: String, value: String, onClick: (() -> Unit)? = null) 
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = title,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(0.46f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(0.54f),
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
     if (onClick == null) {
