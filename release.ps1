@@ -76,7 +76,9 @@ function Get-ReleaseChanges {
         throw "Unable to generate changelog entries from $range."
     }
     return @($changes | Where-Object {
-        -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '^Release\s+v?\d+\.\d+\.\d+$'
+        -not [string]::IsNullOrWhiteSpace($_) -and
+            $_ -notmatch '^Release\s+v?\d+\.\d+\.\d+$' -and
+            $_ -notmatch '^\[skip changelog\]\s*'
     })
 }
 

@@ -5,7 +5,6 @@ Yura 的重要变更记录。后续发布条目由 `release.ps1` 根据上一个
 ## [1.1.0] - 2026-07-19
 
 - Add reader corrections and EPUB export
-- Fix release tag discovery
 
 ## [1.0.7] - 2026-07-19
 
