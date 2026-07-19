@@ -1,4 +1,7 @@
-@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(
+    org.readium.r2.shared.ExperimentalReadiumApi::class,
+    dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi::class,
+)
 
 package com.yura.app.ui
 

@@ -91,6 +91,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commitNow
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
@@ -256,19 +258,18 @@ class ReaderActivity : FragmentActivity() {
         }
 
         LaunchedEffect(controlsVisible) {
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
             if (controlsVisible) {
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                insetsController.show(WindowInsetsCompat.Type.statusBars())
             } else {
-                window.setFlags(
-                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                )
+                insetsController.hide(WindowInsetsCompat.Type.statusBars())
             }
         }
 
         DisposableEffect(Unit) {
             onDispose {
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                WindowCompat.getInsetsController(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.statusBars())
             }
         }
 

@@ -12,7 +12,7 @@ internal object ReaderTtsParagraphParser {
             .filter { it.length >= 2 }
         if (paragraphs.isNotEmpty()) return paragraphs
 
-        val fallbackText = document.body()?.text()?.takeIf(String::isNotBlank)
+        val fallbackText = document.body().text().takeIf(String::isNotBlank)
             ?: html.replace(Regex("<[^>]+>"), " ")
         return fallbackText
             .split(Regex("(?<=[。！？!?])\\s*|\\n+"))

@@ -49,7 +49,15 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
+        }
         create("release") {
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
             if (releaseSigningConfigured) {
                 storeFile = file(requireNotNull(releaseStoreFile))
                 storePassword = releaseStorePassword
