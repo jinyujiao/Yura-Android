@@ -91,8 +91,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commitNow
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
@@ -224,6 +222,15 @@ class ReaderActivity : FragmentActivity() {
         super.onDestroy()
     }
 
+    @Suppress("DEPRECATION")
+    private fun setReaderStatusBarVisible(visible: Boolean) {
+        if (visible) {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        } else {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
+    }
+
     @Composable
     private fun ReaderScreen(bookId: Long) {
         var state by remember { mutableStateOf<ReaderState>(ReaderState.Loading) }
@@ -271,18 +278,12 @@ class ReaderActivity : FragmentActivity() {
         }
 
         LaunchedEffect(controlsVisible) {
-            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            if (controlsVisible) {
-                insetsController.show(WindowInsetsCompat.Type.statusBars())
-            } else {
-                insetsController.hide(WindowInsetsCompat.Type.statusBars())
-            }
+            setReaderStatusBarVisible(controlsVisible)
         }
 
         DisposableEffect(Unit) {
             onDispose {
-                WindowCompat.getInsetsController(window, window.decorView)
-                    .show(WindowInsetsCompat.Type.statusBars())
+                setReaderStatusBarVisible(true)
             }
         }
 
