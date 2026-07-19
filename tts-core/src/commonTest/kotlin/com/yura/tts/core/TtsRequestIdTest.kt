@@ -1,21 +1,35 @@
 package com.yura.tts.core
 
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 class TtsRequestIdTest {
+    private val identity = TtsRequestIdentity(
+        sessionId = 42L,
+        queueSequence = 12,
+        chapterPosition = 4,
+        textHash = TtsRequestId.textHash("“你好。”她说。"),
+    )
+
     @Test
-    fun roundTripsCloudAndSystemRequestIds() {
-        assertEquals(4 to 12, TtsRequestId.parseCloud(TtsRequestId.cloud(4, 12)))
-        assertEquals(8 to 3, TtsRequestId.parseSystem(TtsRequestId.system(8, 3)))
+    fun roundTripsMediaAndSystemRequestIds() {
+        assertEquals(identity, TtsRequestId.parseMedia(TtsRequestId.media(identity)))
+        assertEquals(identity, TtsRequestId.parseSystem(TtsRequestId.system(identity)))
     }
 
     @Test
-    fun rejectsInvalidRequestIds() {
-        assertNull(TtsRequestId.parseCloud("system:1:2"))
-        assertNull(TtsRequestId.parseCloud("1:bad"))
-        assertNull(TtsRequestId.parseSystem("1:2"))
-        assertNull(TtsRequestId.parseSystem("other:1:2"))
+    fun rejectsWrongKindsAndInvalidRequestIds() {
+        assertNull(TtsRequestId.parseMedia(TtsRequestId.system(identity)))
+        assertNull(TtsRequestId.parseSystem("tts:v2:system:bad:12:4:abcd"))
+        assertNull(TtsRequestId.parseMedia("1:12"))
+        assertNull(TtsRequestId.parseSystem(null))
+    }
+
+    @Test
+    fun textHashChangesWhenDialoguePunctuationChanges() {
+        assertEquals(TtsRequestId.textHash("“你好。”她说。"), TtsRequestId.textHash("“你好。”她说。"))
+        assertNotEquals(TtsRequestId.textHash("“你好。”她说。"), TtsRequestId.textHash("你好。她说。"))
     }
 }

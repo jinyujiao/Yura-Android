@@ -735,7 +735,7 @@ class ReaderActivity : FragmentActivity() {
                 Toast.makeText(this, "\u6ca1\u6709\u53ef\u6717\u8bfb\u7684\u6587\u5b57", Toast.LENGTH_SHORT).show()
             } else {
                 activeTtsParagraphTotal = paragraphs.size
-                ttsController.speak(paragraphs, firstVisible)
+                ttsController.speak(paragraphs, firstVisible, activeTtsReadingOrderIndex)
             }
         }
     }
@@ -979,7 +979,7 @@ class ReaderActivity : FragmentActivity() {
                 continueTtsToNextChapter()
             } else {
                 activeTtsParagraphTotal = paragraphs.size
-                ttsController.speakContinuing(paragraphs, 0)
+                ttsController.speakContinuing(paragraphs, 0, nextIndex)
             }
         }
     }

@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
 internal class TtsAudioCache(context: Context) {
     private val audioDir = File(context.applicationContext.cacheDir, "tts-audio").apply { mkdirs() }
 
-    fun fileFor(generation: Int, sentenceIndex: Int): File = File(audioDir, "tts-$generation-$sentenceIndex.wav")
+    fun fileFor(sessionId: Long, queueSequence: Int): File = File(audioDir, "tts-$sessionId-$queueSequence.wav")
 
     fun clear() {
         audioDir.listFiles()?.forEach { file ->
