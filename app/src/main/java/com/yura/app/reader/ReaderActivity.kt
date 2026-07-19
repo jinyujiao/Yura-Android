@@ -150,6 +150,7 @@ class ReaderActivity : FragmentActivity() {
     private var pendingForegroundTtsLocator: Locator? = null
     private var pendingForegroundTtsParagraphIndex = -1
     private val ttsController by lazy { SimpleTtsController(this) }
+    private val systemBarsController by lazy { ReaderSystemBarsController(window) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -222,15 +223,6 @@ class ReaderActivity : FragmentActivity() {
         super.onDestroy()
     }
 
-    @Suppress("DEPRECATION")
-    private fun setReaderStatusBarVisible(visible: Boolean) {
-        if (visible) {
-            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        } else {
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        }
-    }
-
     @Composable
     private fun ReaderScreen(bookId: Long) {
         var state by remember { mutableStateOf<ReaderState>(ReaderState.Loading) }
@@ -278,12 +270,12 @@ class ReaderActivity : FragmentActivity() {
         }
 
         LaunchedEffect(controlsVisible) {
-            setReaderStatusBarVisible(controlsVisible)
+            systemBarsController.setStatusBarVisible(controlsVisible)
         }
 
         DisposableEffect(Unit) {
             onDispose {
-                setReaderStatusBarVisible(true)
+                systemBarsController.setStatusBarVisible(true)
             }
         }
 
