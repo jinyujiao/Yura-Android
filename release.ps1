@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = $PSScriptRoot
 $versionFile = Join-Path $repoRoot "version.properties"
+$changelogFile = Join-Path $repoRoot "CHANGELOG.md"
 $gradleWrapper = Join-Path $repoRoot "gradlew.bat"
 $distDirectory = Join-Path $repoRoot "dist"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -57,6 +58,87 @@ function Write-AppVersion {
     [System.IO.File]::WriteAllText($versionFile, $content, $utf8NoBom)
 }
 
+function Get-LatestVersionTag {
+    $tag = git tag --list "v[0-9]*" --sort=-version:refname | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect Git tags."
+    }
+    return $tag
+}
+
+function Get-ReleaseChanges {
+    param([string]$SinceTag)
+
+    $range = if ([string]::IsNullOrWhiteSpace($SinceTag)) { "HEAD" } else { "$SinceTag..HEAD" }
+    $changes = @(git log $range --reverse --no-merges --pretty=format:%s)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to generate changelog entries from $range."
+    }
+    return @($changes | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '^Release\s+v?\d+\.\d+\.\d+$'
+    })
+}
+
+function Update-Changelog {
+    param(
+        [string]$Version,
+        [string[]]$Changes
+    )
+
+    $content = if (Test-Path -LiteralPath $changelogFile -PathType Leaf) {
+        Get-Content -LiteralPath $changelogFile -Raw
+    } else {
+        "# Changelog`n`nYura 的重要变更记录。发布条目由 ``release.ps1`` 根据上一个版本标签之后的 Git 提交自动生成。`n`n"
+    }
+    if ($content -match "(?m)^## \[$([regex]::Escape($Version))\](?:\s|$)") {
+        throw "CHANGELOG.md already contains version $Version."
+    }
+
+    $items = if ($Changes.Count -gt 0) {
+        $Changes | ForEach-Object { "- $($_.Trim())" }
+    } else {
+        @("- 无用户可见变更。")
+    }
+    $section = "## [$Version] - $(Get-Date -Format 'yyyy-MM-dd')`n`n$($items -join "`n")`n`n"
+    $firstRelease = [regex]::Match($content, '(?m)^## \[')
+    $updated = if ($firstRelease.Success) {
+        $content.Insert($firstRelease.Index, $section)
+    } else {
+        $content.TrimEnd() + "`n`n" + $section
+    }
+    [System.IO.File]::WriteAllText($changelogFile, $updated, $utf8NoBom)
+}
+
+function Get-ReleaseNotes {
+    param([string]$Version)
+
+    if (-not (Test-Path -LiteralPath $changelogFile -PathType Leaf)) {
+        throw "CHANGELOG.md is missing."
+    }
+    $content = Get-Content -LiteralPath $changelogFile -Raw
+    $escapedVersion = [regex]::Escape($Version)
+    $match = [regex]::Match($content, "(?ms)^## \[$escapedVersion\][^\r\n]*\r?\n(?<body>.*?)(?=^## \[|\z)")
+    if (-not $match.Success -or [string]::IsNullOrWhiteSpace($match.Groups['body'].Value)) {
+        throw "CHANGELOG.md does not contain release notes for version $Version."
+    }
+    return $match.Groups['body'].Value.Trim()
+}
+
+function Restore-ReleaseMetadata {
+    param(
+        [string]$VersionContent,
+        [bool]$ChangelogExisted,
+        [string]$ChangelogContent
+    )
+
+    [System.IO.File]::WriteAllText($versionFile, $VersionContent, $utf8NoBom)
+    if ($ChangelogExisted) {
+        [System.IO.File]::WriteAllText($changelogFile, $ChangelogContent, $utf8NoBom)
+    } elseif (Test-Path -LiteralPath $changelogFile) {
+        Remove-Item -LiteralPath $changelogFile -Force
+    }
+}
+
 function Get-AndroidSdkDirectory {
     foreach ($candidate in @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME)) {
         if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Container)) {
@@ -80,17 +162,19 @@ function Get-AndroidSdkDirectory {
 
 Push-Location $repoRoot
 try {
-    if ($Publish) {
+    if ($Publish -or $Bump -ne "none") {
         $workingTree = git status --porcelain
         if ($LASTEXITCODE -ne 0) {
             throw "Unable to inspect the Git working tree."
         }
         if ($workingTree) {
-            throw "Publishing requires a clean Git working tree. Commit the application changes first."
+            throw "Version bumps and publishing require a clean Git working tree. Commit the application changes first."
         }
     }
 
     $originalVersionContent = Get-Content -LiteralPath $versionFile -Raw
+    $changelogExisted = Test-Path -LiteralPath $changelogFile -PathType Leaf
+    $originalChangelogContent = if ($changelogExisted) { Get-Content -LiteralPath $changelogFile -Raw } else { "" }
     $currentVersion = Read-AppVersion
     $nextVersionCode = $currentVersion.Code
     $nextMajor = $currentVersion.Major
@@ -116,14 +200,23 @@ try {
     }
 
     $nextVersionName = "$nextMajor.$nextMinor.$nextPatch"
-    if ($Bump -ne "none") {
-        Write-AppVersion -Code $nextVersionCode -Name $nextVersionName
-        Write-Host "Version: $($currentVersion.Name) ($($currentVersion.Code)) -> $nextVersionName ($nextVersionCode)"
-    } else {
-        Write-Host "Building current version: $nextVersionName ($nextVersionCode)"
+    $tag = "v$nextVersionName"
+    if ($Publish) {
+        git rev-parse --quiet --verify "refs/tags/$tag" *> $null
+        if ($LASTEXITCODE -eq 0) {
+            throw "Tag already exists locally: $tag"
+        }
     }
-
     try {
+        if ($Bump -ne "none") {
+            $releaseChanges = Get-ReleaseChanges -SinceTag (Get-LatestVersionTag)
+            Update-Changelog -Version $nextVersionName -Changes $releaseChanges
+            Write-AppVersion -Code $nextVersionCode -Name $nextVersionName
+            Write-Host "Version: $($currentVersion.Name) ($($currentVersion.Code)) -> $nextVersionName ($nextVersionCode)"
+        } else {
+            Write-Host "Building current version: $nextVersionName ($nextVersionCode)"
+        }
+
         Invoke-CheckedCommand -Command $gradleWrapper -Arguments @(
             ":app:testDebugUnitTest",
             ":app:compileDebugAndroidTestKotlin",
@@ -179,27 +272,30 @@ try {
             $checksumLines,
             $utf8NoBom
         )
+        [System.IO.File]::WriteAllText(
+            (Join-Path $distDirectory "RELEASE_NOTES.md"),
+            (Get-ReleaseNotes -Version $nextVersionName) + [Environment]::NewLine,
+            $utf8NoBom
+        )
     } catch {
-        [System.IO.File]::WriteAllText($versionFile, $originalVersionContent, $utf8NoBom)
+        if ($Bump -ne "none") {
+            Restore-ReleaseMetadata `
+                -VersionContent $originalVersionContent `
+                -ChangelogExisted $changelogExisted `
+                -ChangelogContent $originalChangelogContent
+        }
         throw
     }
 
     Write-Host "Release artifacts are ready in $distDirectory"
 
     if ($Publish) {
-        $tag = "v$nextVersionName"
-        git rev-parse --quiet --verify "refs/tags/$tag" *> $null
-        if ($LASTEXITCODE -eq 0) {
-            throw "Tag already exists locally: $tag"
-        }
-
         if ($Bump -ne "none") {
-            Invoke-CheckedCommand -Command "git" -Arguments @("add", "--", "version.properties")
+            Invoke-CheckedCommand -Command "git" -Arguments @("add", "--", "version.properties", "CHANGELOG.md")
             Invoke-CheckedCommand -Command "git" -Arguments @("commit", "-m", "Release $tag")
         }
         Invoke-CheckedCommand -Command "git" -Arguments @("tag", "-a", $tag, "-m", "Release $tag")
-        Invoke-CheckedCommand -Command "git" -Arguments @("push", "origin", "HEAD")
-        Invoke-CheckedCommand -Command "git" -Arguments @("push", "origin", $tag)
+        Invoke-CheckedCommand -Command "git" -Arguments @("push", "--atomic", "origin", "HEAD", $tag)
         Write-Host "Published $tag. GitHub Actions will create the GitHub Release."
     }
 } finally {

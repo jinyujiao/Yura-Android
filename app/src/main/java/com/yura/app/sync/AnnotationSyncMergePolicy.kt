@@ -2,11 +2,13 @@ package com.yura.app.sync
 
 object AnnotationSyncMergePolicy {
     fun shouldApplyRemoteAnnotation(
-        localExists: Boolean,
-        remoteCreatedAt: Long,
+        localUpdatedAt: Long?,
+        remoteUpdatedAt: Long,
         deletedAt: Long?,
     ): Boolean =
-        !localExists && remoteCreatedAt > 0L && (deletedAt == null || deletedAt < remoteCreatedAt)
+        remoteUpdatedAt > 0L &&
+            (localUpdatedAt == null || remoteUpdatedAt > localUpdatedAt) &&
+            (deletedAt == null || deletedAt < remoteUpdatedAt)
 
     fun shouldApplyRemoteDeletion(
         localDeletedAt: Long?,

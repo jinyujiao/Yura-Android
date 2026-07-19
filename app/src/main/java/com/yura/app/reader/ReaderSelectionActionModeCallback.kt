@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.view.ActionMode
+import android.view.HapticFeedbackConstants
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
@@ -15,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.publication.Publication
 
 internal class ReaderSelectionActionModeCallback(
     private val context: Context,
@@ -22,10 +25,14 @@ internal class ReaderSelectionActionModeCallback(
     private val dao: YuraDao,
     private val scope: CoroutineScope,
     private val navigator: () -> EpubNavigatorFragment?,
-    private val onNoteRequested: (org.readium.r2.shared.publication.Locator) -> Unit,
+    private val publication: () -> Publication?,
+    private val onNoteRequested: (Locator) -> Unit,
+    private val onCorrectionRequested: (Locator) -> Unit,
 ) : ActionMode.Callback {
 
     override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+        (context as? android.app.Activity)?.window?.decorView
+            ?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         menu.clear()
         menu.add(Menu.NONE, ACTION_COPY, 0, "复制")
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
@@ -33,13 +40,15 @@ internal class ReaderSelectionActionModeCallback(
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         menu.add(Menu.NONE, ACTION_HIGHLIGHT, 2, "高亮")
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        menu.add(Menu.NONE, ACTION_CORRECTION, 3, "修订")
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         return true
     }
 
     override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
 
     override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-        if (item.itemId !in setOf(ACTION_COPY, ACTION_NOTE, ACTION_HIGHLIGHT)) return false
+        if (item.itemId !in setOf(ACTION_COPY, ACTION_NOTE, ACTION_HIGHLIGHT, ACTION_CORRECTION)) return false
         scope.launch {
             val activeNavigator = navigator()
             val selection = activeNavigator?.currentSelection()
@@ -62,6 +71,7 @@ internal class ReaderSelectionActionModeCallback(
                     Toast.makeText(context, "已高亮", Toast.LENGTH_SHORT).show()
                 }
                 ACTION_NOTE -> onNoteRequested(selection.locator)
+                ACTION_CORRECTION -> onCorrectionRequested(selection.locator)
             }
             activeNavigator.clearSelection()
             mode.finish()
@@ -77,7 +87,9 @@ internal class ReaderSelectionActionModeCallback(
                 val locator = annotation.locator ?: return@mapNotNull null
                 val style = when (annotation.type) {
                     ReaderAnnotation.TYPE_NOTE -> Decoration.Style.Underline(NOTE_COLOR)
-                    else -> Decoration.Style.Highlight(HIGHLIGHT_COLOR)
+                    ReaderAnnotation.TYPE_HIGHLIGHT -> Decoration.Style.Highlight(HIGHLIGHT_COLOR)
+                    ReaderAnnotation.TYPE_CORRECTION -> Decoration.Style.Highlight(CORRECTION_COLOR)
+                    else -> return@mapNotNull null
                 }
                 Decoration(id = annotation.id, locator = locator, style = style)
             }
@@ -85,7 +97,7 @@ internal class ReaderSelectionActionModeCallback(
         }
     }
 
-    fun saveNote(locator: org.readium.r2.shared.publication.Locator, note: String) {
+    fun saveNote(locator: Locator, note: String) {
         scope.launch {
             saveAnnotation(ReaderAnnotation.TYPE_NOTE, locator, note)
             refreshDecorations()
@@ -93,11 +105,17 @@ internal class ReaderSelectionActionModeCallback(
         }
     }
 
-    private suspend fun saveAnnotation(
-        type: String,
-        locator: org.readium.r2.shared.publication.Locator,
-        note: String,
-    ) {
+    fun saveCorrection(locator: Locator, replacement: String) {
+        scope.launch {
+            saveAnnotation(ReaderAnnotation.TYPE_CORRECTION, locator, replacement)
+            refreshDecorations()
+            Toast.makeText(context, "修订已保存到笔记", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private suspend fun saveAnnotation(type: String, locator: Locator, note: String) {
+        val chapter = publication()?.let { ReaderChapterTitleResolver.resolveInfo(it, locator) }
+        val now = System.currentTimeMillis()
         dao.upsertAnnotation(
             ReaderAnnotation(
                 id = UUID.randomUUID().toString(),
@@ -105,7 +123,11 @@ internal class ReaderSelectionActionModeCallback(
                 type = type,
                 locatorJson = locator.toJSON().toString(),
                 note = note,
-                createdAt = System.currentTimeMillis(),
+                createdAt = now,
+                updatedAt = now,
+                chapterIndex = chapter?.index ?: -1,
+                chapterTitle = chapter?.title.orEmpty(),
+                chapterHref = chapter?.href ?: locator.href.toString().substringBefore('#'),
             ),
         )
     }
@@ -114,8 +136,10 @@ internal class ReaderSelectionActionModeCallback(
         const val ACTION_COPY = 1
         const val ACTION_NOTE = 2
         const val ACTION_HIGHLIGHT = 3
+        const val ACTION_CORRECTION = 4
         const val DECORATION_GROUP = "reader-annotations"
         val HIGHLIGHT_COLOR: Int = Color.rgb(255, 213, 79)
         val NOTE_COLOR: Int = Color.rgb(255, 143, 0)
+        val CORRECTION_COLOR: Int = Color.rgb(206, 147, 216)
     }
 }

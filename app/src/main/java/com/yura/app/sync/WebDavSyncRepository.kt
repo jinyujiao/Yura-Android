@@ -200,13 +200,13 @@ class WebDavSyncRepository(context: Context) {
                 remote.id.isBlank() ||
                 remote.bookIdentifier.isBlank() ||
                 remote.locatorJson.isBlank() ||
-                remote.type !in setOf(ReaderAnnotation.TYPE_NOTE, ReaderAnnotation.TYPE_HIGHLIGHT)
+                remote.type !in setOf(ReaderAnnotation.TYPE_NOTE, ReaderAnnotation.TYPE_HIGHLIGHT, ReaderAnnotation.TYPE_CORRECTION)
             ) {
                 return@forEach
             }
             val deletedAt = deletedById[remote.id]?.deletedAt
-            val localExists = dao.annotation(remote.id) != null
-            if (!AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(localExists, remote.createdAt, deletedAt)) {
+            val localAnnotation = dao.annotation(remote.id)
+            if (!AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(localAnnotation?.updatedAt, remote.updatedAt, deletedAt)) {
                 return@forEach
             }
             val book = booksByIdentifier[remote.bookIdentifier] ?: return@forEach
@@ -218,6 +218,10 @@ class WebDavSyncRepository(context: Context) {
                     locatorJson = remote.locatorJson,
                     note = remote.note,
                     createdAt = remote.createdAt,
+                    updatedAt = remote.updatedAt,
+                    chapterIndex = remote.chapterIndex,
+                    chapterTitle = remote.chapterTitle,
+                    chapterHref = remote.chapterHref,
                 ),
             )
             merged++
@@ -262,6 +266,10 @@ class WebDavSyncRepository(context: Context) {
                 locatorJson = annotation.locatorJson,
                 note = annotation.note,
                 createdAt = annotation.createdAt,
+                updatedAt = annotation.updatedAt,
+                chapterIndex = annotation.chapterIndex,
+                chapterTitle = annotation.chapterTitle,
+                chapterHref = annotation.chapterHref,
             )
         }
         return SyncSnapshot(
@@ -334,6 +342,10 @@ class WebDavSyncRepository(context: Context) {
         val locatorJson: String,
         val note: String,
         val createdAt: Long,
+        val updatedAt: Long,
+        val chapterIndex: Int,
+        val chapterTitle: String,
+        val chapterHref: String,
     ) {
         fun toJson(): JSONObject = JSONObject()
             .put("id", id)
@@ -342,16 +354,27 @@ class WebDavSyncRepository(context: Context) {
             .put("locator", locatorJson)
             .put("note", note)
             .put("createdAt", createdAt)
+            .put("updatedAt", updatedAt)
+            .put("chapterIndex", chapterIndex)
+            .put("chapterTitle", chapterTitle)
+            .put("chapterHref", chapterHref)
 
         companion object {
-            fun fromJson(json: JSONObject): SyncAnnotation = SyncAnnotation(
-                id = json.optString("id"),
-                bookIdentifier = json.optString("bookIdentifier"),
-                type = json.optString("type"),
-                locatorJson = json.optString("locator"),
-                note = json.optString("note"),
-                createdAt = json.optLong("createdAt"),
-            )
+            fun fromJson(json: JSONObject): SyncAnnotation {
+                val createdAt = json.optLong("createdAt")
+                return SyncAnnotation(
+                    id = json.optString("id"),
+                    bookIdentifier = json.optString("bookIdentifier"),
+                    type = json.optString("type"),
+                    locatorJson = json.optString("locator"),
+                    note = json.optString("note"),
+                    createdAt = createdAt,
+                    updatedAt = json.optLong("updatedAt", createdAt),
+                    chapterIndex = json.optInt("chapterIndex", -1),
+                    chapterTitle = json.optString("chapterTitle"),
+                    chapterHref = json.optString("chapterHref"),
+                )
+            }
         }
     }
 

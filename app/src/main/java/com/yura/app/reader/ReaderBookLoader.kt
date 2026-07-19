@@ -16,11 +16,16 @@ class ReaderBookLoader(
     private val dao: YuraDao,
     private val readium: ReadiumServices,
 ) {
-    suspend fun open(bookId: Long, initialPreferences: EpubPreferences): ReaderState =
+    suspend fun open(
+        bookId: Long,
+        initialPreferences: EpubPreferences,
+        initialLocatorOverride: Locator? = null,
+        markAsRead: Boolean = true,
+    ): ReaderState =
         withContext(Dispatchers.IO) {
             runCatching {
                 val book = dao.book(bookId) ?: error("找不到这本书")
-                dao.markBookRead(bookId, System.currentTimeMillis())
+                if (markAsRead) dao.markBookRead(bookId, System.currentTimeMillis())
                 val openedAsset = readium.assetRetriever.retrieve(book.url, book.mediaType)
                     .getOrElse { error("无法读取图书：${it.message}") }
                 val openedPublication = readium.publicationOpener.open(
@@ -39,7 +44,7 @@ class ReaderBookLoader(
                 ReaderState.Ready(
                     book = book,
                     publication = openedPublication,
-                    initialLocator = book.progression
+                    initialLocator = initialLocatorOverride ?: book.progression
                         .takeUnless { it.isBlank() || it == "{}" }
                         ?.let { Locator.fromJSON(JSONObject(it)) },
                     initialPreferences = initialPreferences,

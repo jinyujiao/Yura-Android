@@ -106,9 +106,30 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          source version.properties
+          awk -v version="${VERSION_NAME}" '
+            $0 ~ "^## \\[" version "\\]" { found=1; next }
+            found && $0 ~ "^## \\[" { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [[ ! -s release-notes.md ]]; then
+            echo "CHANGELOG.md does not contain release notes for ${VERSION_NAME}."
+            exit 1
+          fi
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           source version.properties
-          gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --title "Yura ${VERSION_NAME}" --generate-notes
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/Yura-${VERSION_NAME}.apk" \
+            "dist/Yura-${VERSION_NAME}.aab" \
+            "dist/SHA256SUMS.txt" \
+            --verify-tag \
+            --title "Yura ${VERSION_NAME}" \
+            --notes-file release-notes.md

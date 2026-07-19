@@ -136,6 +136,7 @@ class ReaderActivity : FragmentActivity() {
     private var selectionActionModeCallback: ReaderSelectionActionModeCallback? = null
     private var showControlsCallback: (() -> Unit)? = null
     private var requestNoteCallback: ((Locator) -> Unit)? = null
+    private var requestCorrectionCallback: ((Locator) -> Unit)? = null
     private val progressionSaver by lazy { ReaderProgressionSaver(lifecycleScope, dao) }
     private val mediaIndentFixRunnables = mutableListOf<Runnable>()
     private var currentTtsWebView: WebView? = null
@@ -145,6 +146,8 @@ class ReaderActivity : FragmentActivity() {
     private var activeTtsReadingOrderIndex = -1
     private var activeTtsParagraphTotal = 0
     private var activeBookId = -1L
+    private var previewMode = false
+    private var previewLocator: Locator? = null
     private var readerForeground = false
     private var pendingForegroundTtsLocator: Locator? = null
     private var pendingForegroundTtsParagraphIndex = -1
@@ -162,12 +165,15 @@ class ReaderActivity : FragmentActivity() {
         }
 
         activeBookId = bookId
+        previewMode = intent.getBooleanExtra(EXTRA_PREVIEW_MODE, false)
+        previewLocator = intent.getStringExtra(EXTRA_INITIAL_LOCATOR)
+            ?.let { json -> runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull() }
         ttsController.onParagraphChanged = { index ->
             runOnUiThread {
                 if (index >= 0) {
                     checkpointTtsProgress(index)
                 } else {
-                    progressionSaver.flush()
+                    if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flush()
                 }
                 if (readerForeground) {
                     highlightTtsParagraph(index)
@@ -199,12 +205,12 @@ class ReaderActivity : FragmentActivity() {
 
     override fun onPause() {
         readerForeground = false
-        progressionSaver.flush()
+        if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flush()
         super.onPause()
     }
 
     override fun onDestroy() {
-        progressionSaver.flushBlocking()
+        if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flushBlocking()
         ttsController.onParagraphChanged = null
         ttsController.onQueueEnded = null
         progressionSaver.cancel()
@@ -231,6 +237,8 @@ class ReaderActivity : FragmentActivity() {
         var ttsVisible by remember { mutableStateOf(false) }
         var pendingNoteLocator by remember { mutableStateOf<Locator?>(null) }
         var noteDraft by remember { mutableStateOf("") }
+        var pendingCorrectionLocator by remember { mutableStateOf<Locator?>(null) }
+        var correctionDraft by remember { mutableStateOf("") }
         var readerPreferences by remember { mutableStateOf(loadReaderPreferences()) }
         var autoReaderTheme by remember { mutableStateOf(ReaderPreferencesStore.isAutoTheme(this)) }
         val systemDark = isSystemInDarkTheme()
@@ -251,9 +259,14 @@ class ReaderActivity : FragmentActivity() {
                 noteDraft = ""
                 pendingNoteLocator = locator
             }
+            requestCorrectionCallback = { locator ->
+                correctionDraft = locator.text.highlight.orEmpty()
+                pendingCorrectionLocator = locator
+            }
             onDispose {
                 showControlsCallback = null
                 requestNoteCallback = null
+                requestCorrectionCallback = null
             }
         }
 
@@ -458,6 +471,64 @@ class ReaderActivity : FragmentActivity() {
                     },
                     dismissButton = {
                         TextButton(onClick = { pendingNoteLocator = null }) { Text("取消") }
+                    },
+                )
+            }
+            pendingCorrectionLocator?.let { locator ->
+                val originalText = locator.text.highlight.orEmpty().trim()
+                AlertDialog(
+                    onDismissRequest = { pendingCorrectionLocator = null },
+                    shape = RoundedCornerShape(28.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    title = {
+                        Text(
+                            text = "记录修订",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.34f),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text("原文", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(originalText, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            OutlinedTextField(
+                                value = correctionDraft,
+                                onValueChange = { value -> correctionDraft = value.take(500) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("修订为") },
+                                minLines = 2,
+                                maxLines = 7,
+                                shape = RoundedCornerShape(18.dp),
+                            )
+                            Text(
+                                "修订只保存在笔记中，不会改变当前阅读正文。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = correctionDraft.isNotBlank() && correctionDraft.trim() != originalText,
+                            onClick = {
+                                selectionActionModeCallback?.saveCorrection(locator, correctionDraft.trim())
+                                pendingCorrectionLocator = null
+                            },
+                        ) { Text("保存", fontWeight = FontWeight.Bold) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingCorrectionLocator = null }) { Text("取消") }
                     },
                 )
             }
@@ -836,8 +907,10 @@ class ReaderActivity : FragmentActivity() {
         if (!readerForeground) {
             pendingForegroundTtsLocator = locator
         }
-        progressionSaver.schedule(activeBookId, locator.toJSON().toString())
-        progressionSaver.flush()
+        if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) {
+            progressionSaver.schedule(activeBookId, locator.toJSON().toString())
+            progressionSaver.flush()
+        }
     }
 
     private fun currentReadingOrderIndex(publication: Publication? = this.publication): Int {
@@ -969,7 +1042,12 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private suspend fun openBook(bookId: Long, initialPreferences: EpubPreferences): ReaderState {
-        val state = bookLoader.open(bookId, initialPreferences)
+        val state = bookLoader.open(
+            bookId = bookId,
+            initialPreferences = initialPreferences,
+            initialLocatorOverride = previewLocator,
+            markAsRead = ReaderProgressPersistencePolicy.shouldPersist(previewMode),
+        )
         if (state is ReaderState.Ready) {
             asset = state.asset
             publication = state.publication
@@ -988,7 +1066,9 @@ class ReaderActivity : FragmentActivity() {
             dao = dao,
             scope = lifecycleScope,
             navigator = { navigatorFragment },
+            publication = { publication },
             onNoteRequested = { locator -> requestNoteCallback?.invoke(locator) },
+            onCorrectionRequested = { locator -> requestCorrectionCallback?.invoke(locator) },
         )
         navigatorFragment = ReaderNavigatorInstaller.install(
             activity = this,
@@ -998,7 +1078,7 @@ class ReaderActivity : FragmentActivity() {
             onPageChanged = { pageIndex, totalPages, locator ->
                 onPageChanged(pageIndex, totalPages, locator)
                 applyMediaIndentFix(activeReaderPreferences)
-                progressionSaver.schedule(data.book.id, locator.toJSON().toString())
+                if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.schedule(data.book.id, locator.toJSON().toString())
             },
             onCenterTap = {
                 lifecycleScope.launch {
@@ -1051,10 +1131,17 @@ class ReaderActivity : FragmentActivity() {
 
     companion object {
         private const val EXTRA_BOOK_ID = "book_id"
+        private const val EXTRA_INITIAL_LOCATOR = "initial_locator"
+        private const val EXTRA_PREVIEW_MODE = "preview_mode"
         private const val NAVIGATOR_TAG = "navigator"
         private val MEDIA_INDENT_FIX_DELAYS_MS = longArrayOf(120L, 360L, 800L)
         fun intent(context: Context, bookId: Long): Intent =
             Intent(context, ReaderActivity::class.java)
                 .putExtra(EXTRA_BOOK_ID, bookId)
+
+        fun previewIntent(context: Context, bookId: Long, locator: Locator): Intent =
+            intent(context, bookId)
+                .putExtra(EXTRA_INITIAL_LOCATOR, locator.toJSON().toString())
+                .putExtra(EXTRA_PREVIEW_MODE, true)
     }
 }

@@ -12,6 +12,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Home
@@ -37,6 +40,8 @@ object YuraIcons {
     val Close: ImageVector = Icons.Filled.Close
     val Copy: ImageVector = Icons.Filled.ContentCopy
     val Delete: ImageVector = Icons.Filled.DeleteOutline
+    val Edit: ImageVector = Icons.Filled.Edit
+    val Export: ImageVector = Icons.Filled.FileDownload
     val Font: ImageVector = Icons.Filled.FormatSize
     val Highlight: ImageVector = Icons.Filled.Highlight
     val Home: ImageVector = Icons.Filled.Home
@@ -54,6 +59,7 @@ object YuraIcons {
     val SkipPrevious: ImageVector = Icons.Filled.SkipPrevious
     val Stop: ImageVector = Icons.Filled.Stop
     val Timer: ImageVector = Icons.Filled.Timer
+    val View: ImageVector = Icons.Filled.Visibility
     val Sort: ImageVector = Icons.AutoMirrored.Filled.Sort
     val Sync: ImageVector = Icons.Filled.Sync
 }

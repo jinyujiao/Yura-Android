@@ -10,6 +10,18 @@ VERSION_NAME=1.0.0
 - `VERSION_CODE`：Android 内部升级编号，每次正式发布必须增加。
 - `VERSION_NAME`：用户可见的语义化版本号，格式为 `主版本.次版本.修订版本`。
 - 普通 Gradle 构建不会修改版本号；只有 `release.ps1` 会按要求递增。
+- `app/build.gradle.kts` 会直接读取该文件，不要在 Gradle 脚本中再维护第二份版本号。
+
+## CHANGELOG
+
+根目录的 `CHANGELOG.md` 是本地发布与 GitHub Release 共用的发布说明来源。
+
+- 执行带版本递增的 `release.ps1` 时，会收集上一个 `vX.Y.Z` 标签之后的非合并提交。
+- `Release vX.Y.Z` 形式的发布提交会自动排除。
+- 新版本条目会插入到 `CHANGELOG.md` 顶部，并写入发布日期。
+- 构建失败时，`version.properties` 和 `CHANGELOG.md` 会一起恢复。
+- `-Bump none` 不会修改 CHANGELOG，只会验证当前版本已经存在对应条目。
+- GitHub Actions 会从 CHANGELOG 提取当前版本内容，不再使用 GitHub 自动生成说明。
 
 ## 发布前开源许可检查
 
@@ -44,6 +56,8 @@ RELEASE_KEY_PASSWORD=your-key-password
 .\release.ps1
 ```
 
+版本递增依赖 Git 提交生成 CHANGELOG，因此执行 `major`、`minor`、`patch` 或 `-Publish` 前必须先提交应用改动，保证工作区干净。仅使用 `-Bump none` 构建当前测试版本时不受此限制。
+
 生成下一个次版本或主版本：
 
 ```powershell
@@ -54,11 +68,12 @@ RELEASE_KEY_PASSWORD=your-key-password
 脚本自动执行：
 
 1. 更新 `version.properties`。
-2. 运行单元测试、Android Test Kotlin 编译和 Lint。
-3. 构建正式签名 APK 与 AAB。
-4. 使用 `apksigner` 验证 APK 签名。
-5. 输出重命名后的文件和 SHA-256 到 `dist/`。
-6. 构建或验证失败时恢复原版本文件。
+2. 根据上一个版本标签之后的提交更新 `CHANGELOG.md`。
+3. 运行单元测试、Android Test Kotlin 编译和 Lint。
+4. 构建正式签名 APK 与 AAB。
+5. 使用 `apksigner` 验证 APK 签名。
+6. 输出重命名后的文件、SHA-256 和发布说明到 `dist/`。
+7. 构建或验证失败时恢复版本文件与 CHANGELOG。
 
 输出示例：
 
@@ -66,6 +81,7 @@ RELEASE_KEY_PASSWORD=your-key-password
 dist/Yura-1.0.1.apk
 dist/Yura-1.0.1.aab
 dist/SHA256SUMS.txt
+dist/RELEASE_NOTES.md
 ```
 
 ## 发布到 GitHub
@@ -80,9 +96,9 @@ dist/SHA256SUMS.txt
 
 1. 递增修订版本和 `VERSION_CODE`。
 2. 完成全部本地验证和正式包构建。
-3. 提交 `version.properties`，提交信息为 `Release vX.Y.Z`。
+3. 提交 `version.properties` 和 `CHANGELOG.md`，提交信息为 `Release vX.Y.Z`。
 4. 创建带注释 Git Tag `vX.Y.Z`。
-5. 推送当前分支和 Tag。
+5. 原子推送当前分支和 Tag，任一失败时远端都不会进入半发布状态。
 6. 由 GitHub Actions 构建并创建 GitHub Release。
 
 如果需要发布当前版本且不递增：
@@ -129,6 +145,6 @@ Workflow 只在解码证书的步骤读取 `RELEASE_KEYSTORE_BASE64`，另外三
 3. 运行测试、Lint、Release APK 和 AAB 构建。
 4. 验证 APK 签名并生成 SHA-256。
 5. 上传 Actions Artifact。
-6. 自动创建带生成式更新日志的 GitHub Release。
+6. 从 `CHANGELOG.md` 提取当前版本说明并创建 GitHub Release。
 
 Google Play 应上传 `.aab`；直接分发或侧载可使用 `.apk`。后续版本必须继续使用同一份签名证书，并保证 `VERSION_CODE` 单调增加。

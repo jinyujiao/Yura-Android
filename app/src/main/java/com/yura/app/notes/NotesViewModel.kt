@@ -1,6 +1,7 @@
 package com.yura.app.notes
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
@@ -21,6 +22,7 @@ data class BookAnnotationGroup(
 ) {
     val noteCount: Int = annotations.count { it.type == ReaderAnnotation.TYPE_NOTE }
     val highlightCount: Int = annotations.count { it.type == ReaderAnnotation.TYPE_HIGHLIGHT }
+    val correctionCount: Int = annotations.count { it.type == ReaderAnnotation.TYPE_CORRECTION }
 }
 
 data class NotesUiState(
@@ -32,6 +34,7 @@ data class NotesUiState(
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val database = YuraDatabase.get(application)
     private val dao = database.yuraDao()
+    private val exporter = CorrectedEpubExporter(application)
     private val message = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<NotesUiState> =
@@ -43,16 +46,46 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     val book = booksById[bookId] ?: return@mapNotNull null
                     BookAnnotationGroup(
                         book = book,
-                        annotations = bookAnnotations.sortedByDescending(ReaderAnnotation::createdAt),
+                        annotations = bookAnnotations.sortedByDescending(ReaderAnnotation::updatedAt),
                     )
                 }
-                .sortedByDescending { group -> group.annotations.firstOrNull()?.createdAt ?: 0L }
+                .sortedByDescending { group -> group.annotations.firstOrNull()?.updatedAt ?: 0L }
             NotesUiState(groups = groups, isLoading = false, message = currentMessage)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = NotesUiState(),
         )
+
+    fun updateCorrection(annotation: ReaderAnnotation, replacement: String) {
+        val value = replacement.trim()
+        if (annotation.type != ReaderAnnotation.TYPE_CORRECTION || value.isBlank()) return
+        viewModelScope.launch {
+            dao.upsertAnnotation(annotation.copy(note = value, updatedAt = System.currentTimeMillis()))
+            message.value = "修订已更新"
+        }
+    }
+
+    fun exportCorrectedEpub(bookId: Long, destination: Uri) {
+        viewModelScope.launch {
+            val book = dao.book(bookId)
+            val corrections = dao.annotationsForBook(bookId)
+                .filter { it.type == ReaderAnnotation.TYPE_CORRECTION }
+            if (book == null) {
+                message.value = "导出失败：图书不存在"
+                return@launch
+            }
+            runCatching { exporter.export(book, corrections, destination) }
+                .onSuccess { summary ->
+                    message.value = if (summary.skipped == 0) {
+                        "修订版 EPUB 已导出，共应用 ${summary.applied} 条修订"
+                    } else {
+                        "修订版已导出：成功 ${summary.applied} 条，无法定位 ${summary.skipped} 条"
+                    }
+                }
+                .onFailure { error -> message.value = "导出失败：${error.message ?: "未知错误"}" }
+        }
+    }
 
     fun deleteAnnotation(annotation: ReaderAnnotation) {
         viewModelScope.launch {
@@ -71,7 +104,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 dao.deleteAnnotation(annotation.id)
             }
-            message.value = if (annotation.type == ReaderAnnotation.TYPE_NOTE) "笔记已删除" else "高亮已删除"
+            message.value = when (annotation.type) {
+                ReaderAnnotation.TYPE_NOTE -> "笔记已删除"
+                ReaderAnnotation.TYPE_CORRECTION -> "修订已删除"
+                else -> "高亮已删除"
+            }
         }
     }
 

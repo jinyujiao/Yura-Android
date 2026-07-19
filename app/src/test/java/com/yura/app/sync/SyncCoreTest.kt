@@ -28,22 +28,22 @@ class SyncCoreTest {
     fun annotationTombstonePreventsResurrection() {
         assertFalse(
             AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
-                localExists = false,
-                remoteCreatedAt = 100,
+                localUpdatedAt = null,
+                remoteUpdatedAt = 100,
                 deletedAt = 120,
             ),
         )
         assertTrue(
             AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
-                localExists = false,
-                remoteCreatedAt = 130,
+                localUpdatedAt = null,
+                remoteUpdatedAt = 130,
                 deletedAt = 120,
             ),
         )
         assertFalse(
             AnnotationSyncMergePolicy.shouldApplyRemoteAnnotation(
-                localExists = true,
-                remoteCreatedAt = 130,
+                localUpdatedAt = 140,
+                remoteUpdatedAt = 130,
                 deletedAt = null,
             ),
         )

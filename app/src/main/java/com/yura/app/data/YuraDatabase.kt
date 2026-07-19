@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Book::class, Bookmark::class, DeletedBook::class, ReaderAnnotation::class, DeletedReaderAnnotation::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class YuraDatabase : RoomDatabase() {
@@ -31,6 +31,7 @@ abstract class YuraDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_3_4)
                     .addMigrations(MIGRATION_4_5)
                     .addMigrations(MIGRATION_5_6)
+                    .addMigrations(MIGRATION_6_7)
                     .build()
                     .also { instance = it }
             }
@@ -69,6 +70,15 @@ abstract class YuraDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS deleted_reader_annotations (id TEXT NOT NULL, book_identifier TEXT NOT NULL, deleted_at INTEGER NOT NULL, PRIMARY KEY(id))")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_deleted_reader_annotations_book_identifier ON deleted_reader_annotations (book_identifier)")
+            }
+        }
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.UPDATED_AT} INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.CHAPTER_INDEX} INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.CHAPTER_TITLE} TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.CHAPTER_HREF} TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE ${ReaderAnnotation.TABLE_NAME} SET ${ReaderAnnotation.UPDATED_AT} = ${ReaderAnnotation.CREATED_AT} WHERE ${ReaderAnnotation.UPDATED_AT} = 0")
             }
         }
     }

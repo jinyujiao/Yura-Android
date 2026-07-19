@@ -160,6 +160,7 @@ fun YuraApp(
     var shelfSort by remember { mutableStateOf(ShelfSort.RecentlyRead) }
     var sortMenuVisible by remember { mutableStateOf(false) }
     var selectedNotesBookId by remember { mutableStateOf<Long?>(null) }
+    var pendingCorrectionExportBook by remember { mutableStateOf<Book?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -177,6 +178,13 @@ fun YuraApp(
         }
     }
 
+    val correctionExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/epub+zip"),
+    ) { uri ->
+        val book = pendingCorrectionExportBook
+        pendingCorrectionExportBook = null
+        if (uri != null && book != null) notesViewModel.exportCorrectedEpub(book.id, uri)
+    }
     LaunchedEffect(libraryState.message) {
         libraryState.message?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -195,6 +203,9 @@ fun YuraApp(
             libraryViewModel.importPublication(uri)
             onExternalPublicationHandled()
         }
+    }
+    LaunchedEffect(tab) {
+        if (tab != RootTab.Notes) selectedNotesBookId = null
     }
 
     BackHandler(enabled = tab == RootTab.Notes && selectedNotesBookId != null) {
@@ -248,7 +259,11 @@ fun YuraApp(
                     modifier = Modifier.statusBarsPadding(),
                 )
             } else {
-                val notesBook = notesState.groups.firstOrNull { it.book.id == selectedNotesBookId }?.book
+                val notesBook = if (tab == RootTab.Notes) {
+                    notesState.groups.firstOrNull { it.book.id == selectedNotesBookId }?.book
+                } else {
+                    null
+                }
                 TopAppBar(
                     title = {
                         Text(
@@ -322,6 +337,16 @@ fun YuraApp(
                                 onSelectBook = { selectedNotesBookId = it },
                                 onBackToBooks = { selectedNotesBookId = null },
                                 onDeleteAnnotation = notesViewModel::deleteAnnotation,
+                                onUpdateCorrection = notesViewModel::updateCorrection,
+                                onOpenAnnotation = { annotation ->
+                                    annotation.locator?.let { locator ->
+                                        context.startActivity(ReaderActivity.previewIntent(context, annotation.bookId, locator))
+                                    }
+                                },
+                                onExportCorrectedEpub = { book ->
+                                    pendingCorrectionExportBook = book
+                                    correctionExportLauncher.launch("${sanitizeExportFileName(book.title)}-修订版.epub")
+                                },
                             )
                             RootTab.Settings -> SettingsHubScreen(
                                 ttsController = ttsController,
@@ -333,7 +358,10 @@ fun YuraApp(
                 }
             FloatingPillNavigation(
                 selected = tab,
-                onSelected = { tab = it },
+                onSelected = { selectedTab ->
+                    if (selectedTab != RootTab.Notes) selectedNotesBookId = null
+                    tab = selectedTab
+                },
                 hazeState = navigationHazeState,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -600,3 +628,5 @@ private fun BookCard(
     }
 }
 
+private fun sanitizeExportFileName(value: String): String =
+    value.replace(Regex("""[\\/:*?"<>|]"""), "_").trim().ifBlank { "Yura" }
