@@ -18,6 +18,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.yura.tts.core.MicrosoftVoice
 import com.yura.tts.core.TtsDefaults
+import com.yura.tts.core.TtsPlaybackPolicy
 import com.yura.tts.core.TtsProvider
 import com.yura.tts.core.TtsRequestIdentity
 import com.yura.tts.core.TtsRequestId
@@ -276,19 +277,27 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun selectProvider(provider: TtsProvider) {
         Log.d(TAG, "selectProvider provider=$provider")
-        val resumeSentence = currentSentenceIndex.takeIf { it >= 0 }
-            ?: _state.value.sentenceIndex.takeIf { it >= 0 }
-        val shouldResume = resumeSentence != null && speechItems.isNotEmpty() && _state.value.state != TtsState.IDLE
+        if (provider == _state.value.provider) return
+
+        val resumeSentence = TtsPlaybackPolicy.providerSwitchResumeSequence(
+            currentQueueSequence = currentSentenceIndex,
+            stateQueueSequence = _state.value.sentenceIndex,
+            queueSize = speechItems.size,
+            state = _state.value.state,
+        )
         preferencesStore.setProvider(provider)
-        stop()
+        cancelPlaybackForProviderSwitch()
         _state.update {
             it.copy(
+                state = if (resumeSentence == null) TtsState.IDLE else TtsState.LOADING,
                 provider = provider,
                 engineName = displayEngineName(provider),
                 errorMessage = null,
             )
         }
-        if (shouldResume) {
+
+        if (resumeSentence != null) {
+            currentSentenceIndex = resumeSentence
             pendingSentenceIndex = resumeSentence
             if (provider == TtsProvider.SYSTEM && !initialized) {
                 createSystemTts()
@@ -300,6 +309,23 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             createSystemTts()
         }
     }
+
+    private fun cancelPlaybackForProviderSwitch() {
+        sessionId++
+        stopping = true
+        tts.stop()
+        player.stop()
+        player.clearMediaItems()
+        stopping = false
+        pendingParagraphIndex = null
+        pendingSentenceIndex = null
+        synthesizingIndex = -1
+        pendingPrefetchPlaybackIndex = -1
+        prefetchingIndices.clear()
+        prefetchedIndices.clear()
+        audioCache.clear()
+    }
+
     fun setMimoVoice(voice: String) {
         preferencesStore.setMimoVoice(voice)
         _state.update { it.copy(mimoVoice = voice, engineName = displayEngineName()) }
@@ -976,29 +1002,30 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun fail(message: String) {
-        Log.e(TAG, "fail: $message")
-        if (_state.value.provider != TtsProvider.SYSTEM && speechItems.isNotEmpty()) {
-            mainHandler.post {
-                wakeLockManager.release()
-                player.stop()
-                _state.update { it.copy(state = TtsState.ERROR, errorMessage = message, engineName = displayEngineName()) }
-            }
-            return
-        }
+        val failedSessionId = sessionId
+        val failedProvider = _state.value.provider
+        Log.e(TAG, "fail provider=$failedProvider retained=true message=$message")
         mainHandler.post {
+            if (failedSessionId != sessionId) return@post
+            sessionId++
             wakeLockManager.release()
+            stopping = true
             tts.stop()
             player.stop()
+            player.clearMediaItems()
+            stopping = false
             pendingParagraphIndex = null
             pendingSentenceIndex = null
-            activeParagraphIndex = -1
             synthesizingIndex = -1
-            onParagraphChanged?.invoke(-1)
+            pendingPrefetchPlaybackIndex = -1
+            prefetchingIndices.clear()
+            prefetchedIndices.clear()
             _state.update {
                 it.copy(
                     state = TtsState.ERROR,
+                    provider = failedProvider,
                     errorMessage = message,
-                    engineName = displayEngineName(),
+                    engineName = displayEngineName(failedProvider),
                 )
             }
         }
