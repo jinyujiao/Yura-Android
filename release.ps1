@@ -59,11 +59,12 @@ function Write-AppVersion {
 }
 
 function Get-LatestVersionTag {
-    $tag = git tag --list "v[0-9]*" --sort=-version:refname | Select-Object -First 1
-    if ($LASTEXITCODE -ne 0) {
+    $tags = @(git tag --list "v[0-9]*" --sort=-version:refname)
+    $gitExitCode = $LASTEXITCODE
+    if ($gitExitCode -ne 0) {
         throw "Unable to inspect Git tags."
     }
-    return $tag
+    return $tags | Select-Object -First 1
 }
 
 function Get-ReleaseChanges {
