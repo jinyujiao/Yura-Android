@@ -17,6 +17,8 @@ data class LibraryUiState(
     val books: List<Book> = emptyList(),
     val isLoading: Boolean = true,
     val isImporting: Boolean = false,
+    val importCompleted: Int = 0,
+    val importTotal: Int = 0,
     val message: String? = null,
 )
 
@@ -38,14 +40,44 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         )
 
     fun importPublication(uri: Uri) {
+        importPublications(listOf(uri), singleImport = true)
+    }
+
+    fun importPublications(uris: List<Uri>) {
+        importPublications(uris, singleImport = false)
+    }
+
+    private fun importPublications(uris: List<Uri>, singleImport: Boolean) {
+        val uniqueUris = uris.distinctBy(Uri::toString)
+        if (uniqueUris.isEmpty()) return
+        if (transientState.value.isImporting) {
+            transientState.value = transientState.value.copy(message = "已有导入任务正在进行")
+            return
+        }
         viewModelScope.launch {
-            transientState.value = transientState.value.copy(isImporting = true, message = null)
-            val result = repository.importPublication(uri)
+            transientState.value = transientState.value.copy(
+                isImporting = true,
+                importCompleted = 0,
+                importTotal = uniqueUris.size,
+                message = null,
+            )
+            var succeeded = 0
+            var firstError: Throwable? = null
+            uniqueUris.forEachIndexed { index, uri ->
+                repository.importPublication(uri)
+                    .onSuccess { succeeded++ }
+                    .onFailure { error -> if (firstError == null) firstError = error }
+                transientState.value = transientState.value.copy(importCompleted = index + 1)
+            }
+            val failed = uniqueUris.size - succeeded
             transientState.value = transientState.value.copy(
                 isImporting = false,
-                message = result.fold(
-                    onSuccess = { "导入完成" },
-                    onFailure = { it.message ?: "导入失败" },
+                message = importResultMessage(
+                    total = uniqueUris.size,
+                    succeeded = succeeded,
+                    failed = failed,
+                    firstError = firstError,
+                    singleImport = singleImport,
                 ),
             )
         }
@@ -82,4 +114,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun clearMessage() {
         transientState.value = transientState.value.copy(message = null)
     }
+}
+
+internal fun importResultMessage(
+    total: Int,
+    succeeded: Int,
+    failed: Int,
+    firstError: Throwable?,
+    singleImport: Boolean,
+): String = when {
+    singleImport && succeeded == 1 -> "导入完成"
+    singleImport -> firstError?.message ?: "导入失败"
+    failed == 0 -> "已导入 $succeeded 本图书"
+    succeeded == 0 -> "批量导入失败：$total 个文件均未导入"
+    else -> "批量导入完成：成功 $succeeded 本，失败 $failed 本"
 }

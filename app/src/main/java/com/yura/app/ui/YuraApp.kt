@@ -162,11 +162,9 @@ fun YuraApp(
     var selectedNotesBookId by remember { mutableStateOf<Long?>(null) }
     var pendingCorrectionExportBook by remember { mutableStateOf<Book?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            libraryViewModel.importPublication(uri)
-        }
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        libraryViewModel.importPublications(uris)
     }
     val coverLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -248,6 +246,8 @@ fun YuraApp(
                     onSortMenuVisibleChange = { sortMenuVisible = it },
                     onSortChange = { shelfSort = it },
                     importing = libraryState.isImporting,
+                    importCompleted = libraryState.importCompleted,
+                    importTotal = libraryState.importTotal,
                     onImport = {
                         importLauncher.launch(arrayOf(
                             "application/epub+zip",

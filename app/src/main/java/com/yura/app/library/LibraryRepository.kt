@@ -33,9 +33,12 @@ class LibraryRepository(
 
     suspend fun importPublication(uri: Uri): Result<Unit> =
         withContext(Dispatchers.IO) {
+            var ownedPublicationFile: File? = null
+            var ownedCoverFile: File? = null
             runCatching {
                 validateImportSize(uri)
                 val importedFile = copyToLibrary(uri)
+                ownedPublicationFile = importedFile.file
                 val sourceDisplayName = displayName(uri)
                 var txtAuthor = ""
                 val publicationFile = if (isTxtPublication(uri, importedFile.file, sourceDisplayName)) {
@@ -47,6 +50,7 @@ class LibraryRepository(
                     )
                     txtAuthor = converted.author
                     importedFile.file.delete()
+                    ownedPublicationFile = converted.file
                     converted.file
                 } else {
                     importedFile.file
@@ -82,6 +86,7 @@ class LibraryRepository(
 
                     val now = Clock.System.now().toEpochMilliseconds()
                     val coverFile = storeCover(publication)
+                    ownedCoverFile = coverFile
                     dao.clearDeletedBook(duplicateIdentifier)
                     dao.insertBook(
                         Book(
@@ -96,11 +101,16 @@ class LibraryRepository(
                             cover = coverFile.absolutePath,
                         ),
                     )
+                    ownedPublicationFile = null
+                    ownedCoverFile = null
                     Unit
                 } finally {
                     publication.close()
                     asset.close()
                 }
+            }.onFailure {
+                ownedPublicationFile?.delete()
+                ownedCoverFile?.delete()
             }
         }
 

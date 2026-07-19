@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -32,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +73,15 @@ fun LibraryScreen(
     val selectedBooks = remember(state.books, selectedBookIds) { state.books.filter { it.id in selectedBookIds } }
     val sortedBooks = remember(state.books, query, sort) {
         ShelfBookFilter.filterAndSort(state.books, query, sort)
+    }
+    val gridState = rememberLazyGridState()
+    var previousSort by remember { mutableStateOf(sort) }
+
+    LaunchedEffect(sort) {
+        if (sort != previousSort) {
+            previousSort = sort
+            gridState.scrollToItem(0)
+        }
     }
 
     BackHandler(enabled = selectedBookIds.isNotEmpty()) { selectedBookIds = emptySet() }
@@ -114,6 +125,7 @@ fun LibraryScreen(
             val shelfColumns = if (maxWidth >= 840.dp) 4 else if (maxWidth >= 600.dp) 3 else 2
             LazyVerticalGrid(
                 columns = GridCells.Fixed(shelfColumns),
+                state = gridState,
             contentPadding = PaddingValues(start = 26.dp, top = 18.dp, end = 26.dp, bottom = 116.dp),
             horizontalArrangement = Arrangement.spacedBy(28.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),

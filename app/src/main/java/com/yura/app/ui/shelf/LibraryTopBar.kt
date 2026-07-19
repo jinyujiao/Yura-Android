@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,8 @@ fun LibraryTopBar(
     onSortMenuVisibleChange: (Boolean) -> Unit,
     onSortChange: (ShelfSort) -> Unit,
     importing: Boolean,
+    importCompleted: Int,
+    importTotal: Int,
     onImport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,6 +61,20 @@ fun LibraryTopBar(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
                 )
+                if (importing && importTotal > 1 && !searchExpanded) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Text(
+                            text = "导入 $importCompleted/$importTotal",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 if (searchExpanded) {
                     Surface(
                         shape = RoundedCornerShape(999.dp),
@@ -140,12 +157,17 @@ fun LibraryTopBar(
                     }
                 }
             }
-            CompactToolbarButton(
-                icon = YuraIcons.Add,
-                contentDescription = if (importing) "正在导入" else "导入书籍",
-                onClick = onImport,
-                enabled = !importing,
-            )
+            if (importing) {
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                }
+            } else {
+                CompactToolbarButton(
+                    icon = YuraIcons.Add,
+                    contentDescription = "批量导入书籍",
+                    onClick = onImport,
+                )
+            }
         },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
