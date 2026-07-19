@@ -84,3 +84,6 @@ include(":readium:streamer")
 project(":readium:streamer").name = "readium-streamer"
 
 include(":app")
+
+include(":tts")
+include(":tts-core")

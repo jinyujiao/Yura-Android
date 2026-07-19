@@ -1,6 +1,8 @@
 package com.yura.app.ui.settings
 
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.core.MicrosoftVoice
+
+import com.yura.tts.SimpleTtsController
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,5 +59,5 @@ class MicrosoftVoiceGroupingTest {
     }
 
     private fun voice(shortName: String, displayName: String, locale: String) =
-        SimpleTtsController.MicrosoftVoice(shortName, displayName, locale)
+        MicrosoftVoice(shortName, displayName, locale)
 }

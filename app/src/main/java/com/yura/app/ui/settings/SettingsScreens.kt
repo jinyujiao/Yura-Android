@@ -97,7 +97,7 @@ import com.yura.app.library.LibraryUiState
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
 import com.yura.app.ui.shelf.LibraryTopBar

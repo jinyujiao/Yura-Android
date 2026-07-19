@@ -1,4 +1,4 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package com.yura.app.ui.settings
 
@@ -95,8 +95,9 @@ import com.yura.app.data.Book
 import com.yura.app.library.LibraryUiState
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
+import com.yura.app.reader.ReaderFonts
 import com.yura.app.reader.ReaderPreferencesStore
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
 import com.yura.app.ui.shelf.LibraryTopBar
@@ -113,6 +114,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Spread
 import org.readium.r2.navigator.preferences.Theme
@@ -132,21 +134,87 @@ fun ReadingSettingsPage(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            SettingsGroup(title = "\u4e3b\u9898") {
+            SettingsGroup(title = "字体") {
                 AppPreferenceChoiceRow(
                     choices = listOf(
-                        PreferenceOption("\u81ea\u52a8", autoTheme) {
-                            onAutoThemeChange(true)
+                        PreferenceOption("默认", preferences.fontFamily == null) {
+                            onPreferencesChange(preferences.copy(fontFamily = null, publisherStyles = false))
                         },
-                        PreferenceOption("\u6d45\u8272", !autoTheme && preferences.theme == Theme.LIGHT) {
+                        PreferenceOption("宋体", preferences.fontFamily == FontFamily.SERIF) {
+                            onPreferencesChange(preferences.copy(fontFamily = FontFamily.SERIF, publisherStyles = false))
+                        },
+                        PreferenceOption("霞鹜文楷", preferences.fontFamily == ReaderFonts.LXGW_WEN_KAI) {
+                            onPreferencesChange(preferences.copy(fontFamily = ReaderFonts.LXGW_WEN_KAI, publisherStyles = false))
+                        },
+                    ),
+                )
+            }
+        }
+        item {
+            SettingsGroup(title = "文字") {
+                AppPreferenceSlider(
+                    title = "字号",
+                    valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
+                    value = (preferences.fontSize ?: 1.0).toFloat(),
+                    valueRange = 0.8f..2.0f,
+                    steps = 11,
+                    onValueChange = { value -> onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false)) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                AppPreferenceSlider(
+                    title = "行高",
+                    valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
+                    value = (preferences.lineHeight ?: 1.5).toFloat(),
+                    valueRange = 1.0f..2.2f,
+                    steps = 5,
+                    onValueChange = { value -> onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false)) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                AppPreferenceSlider(
+                    title = "字间距",
+                    valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
+                    value = (preferences.letterSpacing ?: 0.0).toFloat(),
+                    valueRange = 0f..1f,
+                    steps = 9,
+                    onValueChange = { value -> onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false)) },
+                )
+            }
+        }
+        item {
+            SettingsGroup(title = "段落") {
+                AppPreferenceSlider(
+                    title = "段首缩进",
+                    valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} 字",
+                    value = (preferences.paragraphIndent ?: 0.0).toFloat(),
+                    valueRange = 0f..4f,
+                    steps = 3,
+                    onValueChange = { value -> onPreferencesChange(preferences.copy(paragraphIndent = value.toInt().toDouble(), publisherStyles = false)) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                AppPreferenceSlider(
+                    title = "段间距",
+                    valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
+                    value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
+                    valueRange = 0f..2f,
+                    steps = 9,
+                    onValueChange = { value -> onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false)) },
+                )
+            }
+        }
+        item {
+            SettingsGroup(title = "主题") {
+                AppPreferenceChoiceRow(
+                    choices = listOf(
+                        PreferenceOption("自动", autoTheme) { onAutoThemeChange(true) },
+                        PreferenceOption("浅色", !autoTheme && preferences.theme == Theme.LIGHT) {
                             onAutoThemeChange(false)
                             onPreferencesChange(preferences.copy(theme = Theme.LIGHT))
                         },
-                        PreferenceOption("\u6df1\u8272", !autoTheme && preferences.theme == Theme.DARK) {
+                        PreferenceOption("深色", !autoTheme && preferences.theme == Theme.DARK) {
                             onAutoThemeChange(false)
                             onPreferencesChange(preferences.copy(theme = Theme.DARK))
                         },
-                        PreferenceOption("\u7c73\u8272", !autoTheme && preferences.theme == Theme.SEPIA) {
+                        PreferenceOption("米色", !autoTheme && preferences.theme == Theme.SEPIA) {
                             onAutoThemeChange(false)
                             onPreferencesChange(preferences.copy(theme = Theme.SEPIA))
                         },
@@ -154,7 +222,7 @@ fun ReadingSettingsPage(
                 )
                 if (autoTheme) {
                     Text(
-                        text = if (systemDark) "\u5f53\u524d\u8ddf\u968f\u7cfb\u7edf\uff1a\u6df1\u8272" else "\u5f53\u524d\u8ddf\u968f\u7cfb\u7edf\uff1a\u6d45\u8272",
+                        text = if (systemDark) "当前跟随系统：深色" else "当前跟随系统：浅色",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
@@ -163,110 +231,36 @@ fun ReadingSettingsPage(
             }
         }
         item {
-            SettingsGroup(title = "\u6587\u5b57") {
-                AppPreferenceSlider(
-                    title = "\u5b57\u53f7",
-                    valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
-                    value = (preferences.fontSize ?: 1.0).toFloat(),
-                    valueRange = 0.8f..2.0f,
-                    steps = 11,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false))
-                    },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                AppPreferenceSlider(
-                    title = "\u884c\u9ad8",
-                    valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
-                    value = (preferences.lineHeight ?: 1.5).toFloat(),
-                    valueRange = 1.0f..2.2f,
-                    steps = 5,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false))
-                    },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                AppPreferenceSlider(
-                    title = "\u6bb5\u9996\u7f29\u8fdb",
-                    valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} \u5b57",
-                    value = (preferences.paragraphIndent ?: 0.0).toFloat(),
-                    valueRange = 0f..4f,
-                    steps = 3,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(paragraphIndent = value.toInt().toDouble(), publisherStyles = false))
-                    },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                AppPreferenceSlider(
-                    title = "\u6bb5\u95f4\u8ddd",
-                    valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
-                    value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
-                    valueRange = 0f..2f,
-                    steps = 9,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false))
-                    },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                AppPreferenceSlider(
-                    title = "\u5b57\u95f4\u8ddd",
-                    valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
-                    value = (preferences.letterSpacing ?: 0.0).toFloat(),
-                    valueRange = 0f..1f,
-                    steps = 9,
-                    onValueChange = { value ->
-                        onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false))
-                    },
-                )
-            }
-        }
-        item {
-            SettingsGroup(title = "\u9605\u8bfb") {
+            SettingsGroup(title = "阅读模式") {
                 AppPreferenceSwitch(
-                    title = "\u6eda\u52a8\u9605\u8bfb",
-                    subtitle = "\u5173\u95ed\u540e\u4f7f\u7528\u5206\u9875\u9605\u8bfb",
+                    title = "滚动阅读",
+                    subtitle = "关闭后使用分页阅读",
                     checked = preferences.scroll == true,
                     onCheckedChange = { checked -> onPreferencesChange(preferences.copy(scroll = checked)) },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                 AppPreferenceSwitch(
-                    title = "\u4f7f\u7528\u4e66\u7c4d\u81ea\u5e26\u7248\u5f0f",
-                    subtitle = "\u5f00\u542f\u540e\u90e8\u5206\u6392\u7248\u7531 EPUB \u539f\u59cb\u6837\u5f0f\u51b3\u5b9a",
+                    title = "使用书籍自带版式",
+                    subtitle = "开启后部分排版由 EPUB 原始样式决定",
                     checked = preferences.publisherStyles != false,
                     onCheckedChange = { checked -> onPreferencesChange(preferences.copy(publisherStyles = checked)) },
                 )
-            }
-        }
-        item {
-            SettingsGroup(title = "\u7248\u5f0f") {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                 Row(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    AppPreferenceChoice(
-                        text = "\u81ea\u52a8",
-                        selected = preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false, publisherStyles = false))
-                        },
-                    )
-                    AppPreferenceChoice(
-                        text = "\u5355\u680f",
-                        selected = preferences.columnCount == ColumnCount.ONE,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false, publisherStyles = false))
-                        },
-                    )
-                    AppPreferenceChoice(
-                        text = "\u53cc\u680f",
-                        selected = preferences.columnCount == ColumnCount.TWO,
-                        onClick = {
-                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false, publisherStyles = false))
-                        },
-                    )
+                    AppPreferenceChoice("自动", preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO) {
+                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false, publisherStyles = false))
+                    }
+                    AppPreferenceChoice("单栏", preferences.columnCount == ColumnCount.ONE) {
+                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false, publisherStyles = false))
+                    }
+                    AppPreferenceChoice("双栏", preferences.columnCount == ColumnCount.TWO) {
+                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false, publisherStyles = false))
+                    }
                 }
             }
         }
     }
 }
-

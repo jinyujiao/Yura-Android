@@ -7,6 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -44,6 +47,20 @@ internal class ReaderProgressionSaver(
         }
     }
 
+    suspend fun flushNow() {
+        synchronized(stateLock) {
+            saveJob?.cancel()
+            saveJob = null
+        }
+        withContext(dispatcher) { persistLatest() }
+    }
+
+    fun flushBlocking(timeoutMs: Long = FINAL_FLUSH_TIMEOUT_MS) {
+        runBlocking {
+            withTimeoutOrNull(timeoutMs) { flushNow() }
+        }
+    }
+
     fun cancel() {
         synchronized(stateLock) {
             saveJob?.cancel()
@@ -78,5 +95,6 @@ internal class ReaderProgressionSaver(
 
     private companion object {
         const val DEFAULT_DEBOUNCE_MS = 400L
+        const val FINAL_FLUSH_TIMEOUT_MS = 1_500L
     }
 }

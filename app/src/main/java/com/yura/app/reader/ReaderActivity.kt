@@ -2,6 +2,9 @@
 
 package com.yura.app.reader
 
+import com.yura.tts.core.TtsState
+import com.yura.tts.core.TtsUiState
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
@@ -93,7 +96,7 @@ import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
 import com.yura.app.data.YuraDatabase
 import com.yura.app.library.ReadiumServices
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.ui.theme.YuraTheme
 import com.yura.app.util.applyDeviceOrientationPolicy
 import java.io.File
@@ -138,6 +141,8 @@ class ReaderActivity : FragmentActivity() {
     private var currentLocator: Locator? = null
     private var activeReaderPreferences: EpubPreferences = ReaderPreferencesStore.defaults
     private var activeTtsReadingOrderIndex = -1
+    private var activeTtsParagraphTotal = 0
+    private var activeBookId = -1L
     private var readerForeground = false
     private var pendingForegroundTtsLocator: Locator? = null
     private var pendingForegroundTtsParagraphIndex = -1
@@ -154,8 +159,14 @@ class ReaderActivity : FragmentActivity() {
             return
         }
 
+        activeBookId = bookId
         ttsController.onParagraphChanged = { index ->
             runOnUiThread {
+                if (index >= 0) {
+                    checkpointTtsProgress(index)
+                } else {
+                    progressionSaver.flush()
+                }
                 if (readerForeground) {
                     highlightTtsParagraph(index)
                 } else {
@@ -191,7 +202,7 @@ class ReaderActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        progressionSaver.flushBlocking()
         ttsController.onParagraphChanged = null
         ttsController.onQueueEnded = null
         progressionSaver.cancel()
@@ -202,6 +213,7 @@ class ReaderActivity : FragmentActivity() {
         ttsController.shutdown()
         publication = null
         asset = null
+        super.onDestroy()
     }
 
     @Composable
@@ -224,9 +236,9 @@ class ReaderActivity : FragmentActivity() {
             ReaderPreferencesStore.resolveTheme(readerPreferences, autoReaderTheme, systemDark)
         }
         val ttsUiState by ttsController.state.collectAsStateWithLifecycle()
-        val ttsActive = ttsUiState.state == SimpleTtsController.State.LOADING ||
-            ttsUiState.state == SimpleTtsController.State.PLAYING ||
-            ttsUiState.state == SimpleTtsController.State.PAUSED
+        val ttsActive = ttsUiState.state == TtsState.LOADING ||
+            ttsUiState.state == TtsState.PLAYING ||
+            ttsUiState.state == TtsState.PAUSED
         activeReaderPreferences = effectiveReaderPreferences
 
         DisposableEffect(Unit) {
@@ -342,7 +354,12 @@ class ReaderActivity : FragmentActivity() {
                         autoReaderTheme = enabled
                         ReaderPreferencesStore.saveAutoTheme(this@ReaderActivity, enabled)
                     },
-                    onPreferencesChange = { updated ->
+                    onPreferencesPreviewChange = { preview ->
+                        val effective = ReaderPreferencesStore.resolveTheme(preview, autoReaderTheme, systemDark)
+                        activeReaderPreferences = effective
+                        navigatorFragment?.submitPreferences(effective)
+                        applyMediaIndentFix(effective)
+                    },                    onPreferencesChange = { updated ->
                         readerPreferences = updated
                         val effective = ReaderPreferencesStore.resolveTheme(updated, autoReaderTheme, systemDark)
                         activeReaderPreferences = effective
@@ -644,6 +661,7 @@ class ReaderActivity : FragmentActivity() {
             if (paragraphs.isEmpty()) {
                 Toast.makeText(this, "\u6ca1\u6709\u53ef\u6717\u8bfb\u7684\u6587\u5b57", Toast.LENGTH_SHORT).show()
             } else {
+                activeTtsParagraphTotal = paragraphs.size
                 ttsController.speak(paragraphs, firstVisible)
             }
         }
@@ -717,9 +735,9 @@ class ReaderActivity : FragmentActivity() {
     private fun syncForegroundTtsHighlight() {
         if (!readerForeground) return
         val state = ttsController.state.value
-        if (state.state != SimpleTtsController.State.PLAYING &&
-            state.state != SimpleTtsController.State.PAUSED &&
-            state.state != SimpleTtsController.State.LOADING
+        if (state.state != TtsState.PLAYING &&
+            state.state != TtsState.PAUSED &&
+            state.state != TtsState.LOADING
         ) {
             return
         }
@@ -796,6 +814,31 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun checkpointTtsProgress(paragraphIndex: Int) {
+        val activePublication = publication ?: return
+        val readingOrderIndex = activeTtsReadingOrderIndex.takeIf { it >= 0 } ?: return
+        val link = activePublication.readingOrder.getOrNull(readingOrderIndex) ?: return
+        val baseLocator = activePublication.locatorFromLink(link) ?: return
+        val nextChapterTotalProgression = activePublication.readingOrder
+            .getOrNull(readingOrderIndex + 1)
+            ?.let(activePublication::locatorFromLink)
+            ?.locations
+            ?.totalProgression
+        val locator = ReaderTtsProgressLocator.create(
+            baseLocator = baseLocator,
+            nextChapterTotalProgression = nextChapterTotalProgression,
+            paragraphIndex = paragraphIndex,
+            paragraphTotal = activeTtsParagraphTotal,
+        )
+
+        currentLocator = locator
+        if (!readerForeground) {
+            pendingForegroundTtsLocator = locator
+        }
+        progressionSaver.schedule(activeBookId, locator.toJSON().toString())
+        progressionSaver.flush()
+    }
+
     private fun currentReadingOrderIndex(publication: Publication? = this.publication): Int {
         val activePublication = publication ?: return -1
         val href = currentLocator?.href?.toString()?.substringBefore('#') ?: return -1
@@ -860,6 +903,7 @@ class ReaderActivity : FragmentActivity() {
             if (paragraphs.isEmpty()) {
                 continueTtsToNextChapter()
             } else {
+                activeTtsParagraphTotal = paragraphs.size
                 ttsController.speakContinuing(paragraphs, 0)
             }
         }
@@ -1013,4 +1057,3 @@ class ReaderActivity : FragmentActivity() {
                 .putExtra(EXTRA_BOOK_ID, bookId)
     }
 }
-

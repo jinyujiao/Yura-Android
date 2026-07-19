@@ -1,5 +1,8 @@
 package com.yura.app.reader
 
+import com.yura.tts.core.TtsState
+import com.yura.tts.core.TtsProvider
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.ui.icons.YuraIcons
 import kotlin.math.roundToInt
 
@@ -133,9 +136,9 @@ fun TtsPanel(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val uiState by controller.state.collectAsStateWithLifecycle()
-    val playing = uiState.state == SimpleTtsController.State.PLAYING
-    val loading = uiState.state == SimpleTtsController.State.LOADING
-    val active = uiState.state !in setOf(SimpleTtsController.State.IDLE, SimpleTtsController.State.ERROR)
+    val playing = uiState.state == TtsState.PLAYING
+    val loading = uiState.state == TtsState.LOADING
+    val active = uiState.state !in setOf(TtsState.IDLE, TtsState.ERROR)
     val speedIndex = SimpleTtsController.PLAYBACK_SPEEDS
         .indexOf(uiState.playbackSpeed)
         .coerceAtLeast(0)
@@ -232,7 +235,7 @@ fun TtsPanel(
                     contentPadding = PaddingValues(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(SimpleTtsController.Provider.entries, key = { it.name }) { provider ->
+                    items(TtsProvider.entries, key = { it.name }) { provider ->
                         PreferenceChoice(
                             text = provider.label,
                             selected = uiState.provider == provider,
@@ -341,20 +344,20 @@ fun TtsPanel(
 }
 
 @Composable
-private fun TtsStatusBadge(state: SimpleTtsController.State) {
+private fun TtsStatusBadge(state: TtsState) {
     val label = when (state) {
-        SimpleTtsController.State.IDLE -> "准备朗读"
-        SimpleTtsController.State.LOADING -> "生成语音中"
-        SimpleTtsController.State.PLAYING -> "正在朗读"
-        SimpleTtsController.State.PAUSED -> "已暂停"
-        SimpleTtsController.State.ERROR -> "朗读异常"
+        TtsState.IDLE -> "准备朗读"
+        TtsState.LOADING -> "生成语音中"
+        TtsState.PLAYING -> "正在朗读"
+        TtsState.PAUSED -> "已暂停"
+        TtsState.ERROR -> "朗读异常"
     }
-    val containerColor = if (state == SimpleTtsController.State.ERROR) {
+    val containerColor = if (state == TtsState.ERROR) {
         MaterialTheme.colorScheme.errorContainer
     } else {
         MaterialTheme.colorScheme.primaryContainer
     }
-    val contentColor = if (state == SimpleTtsController.State.ERROR) {
+    val contentColor = if (state == TtsState.ERROR) {
         MaterialTheme.colorScheme.onErrorContainer
     } else {
         MaterialTheme.colorScheme.onPrimaryContainer

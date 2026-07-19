@@ -24,7 +24,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Yura">
         <service
-            android:name=".reader.MediaService"
+            android:name="com.yura.tts.android.MediaService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>

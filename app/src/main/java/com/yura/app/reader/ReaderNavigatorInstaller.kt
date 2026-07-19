@@ -7,6 +7,7 @@ import androidx.fragment.app.commitNow
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Locator
 
@@ -23,9 +24,18 @@ internal object ReaderNavigatorInstaller {
         val fragmentFactory = data.navigatorFactory.createFragmentFactory(
             initialLocator = data.initialLocator,
             initialPreferences = data.initialPreferences,
-            configuration = EpubNavigatorFragment.Configuration(
-                selectionActionModeCallback = selectionActionModeCallback,
-            ),
+            configuration = EpubNavigatorFragment.Configuration {
+                servedAssets = listOf(ReaderFonts.SERVED_ASSETS_PATTERN)
+                this.selectionActionModeCallback = selectionActionModeCallback
+                addFontFamilyDeclaration(
+                    fontFamily = ReaderFonts.LXGW_WEN_KAI,
+                    alternates = listOf(FontFamily.SERIF),
+                ) {
+                    addFontFace {
+                        addSource(ReaderFonts.LXGW_ASSET_PATH, preload = true)
+                    }
+                }
+            },
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
                     onPageChanged(pageIndex, totalPages, locator)

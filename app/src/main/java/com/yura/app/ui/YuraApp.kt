@@ -1,4 +1,4 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package com.yura.app.ui
 
@@ -102,7 +102,7 @@ import com.yura.app.notes.NotesViewModel
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource

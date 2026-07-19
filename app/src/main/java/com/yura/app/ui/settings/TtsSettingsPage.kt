@@ -1,5 +1,9 @@
 package com.yura.app.ui.settings
 
+import com.yura.tts.core.TtsState
+import com.yura.tts.core.TtsProvider
+import com.yura.tts.core.MicrosoftVoice
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.ui.icons.YuraIcons
 import java.util.Locale
 
@@ -114,10 +118,10 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 when (uiState.provider) {
-                    SimpleTtsController.Provider.SYSTEM -> {
+                    TtsProvider.SYSTEM -> {
                         SettingTextRow("系统朗读", uiState.engineName.ifBlank { "系统默认朗读引擎" })
                     }
-                    SimpleTtsController.Provider.MIMO -> {
+                    TtsProvider.MIMO -> {
                         SettingTextRow(
                             title = "MiMo 音色",
                             value = uiState.mimoVoice,
@@ -134,7 +138,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                             password = true,
                         )
                     }
-                    SimpleTtsController.Provider.MICROSOFT -> {
+                    TtsProvider.MICROSOFT -> {
                         val selectedMicrosoftVoice = uiState.microsoftVoices
                             .firstOrNull { it.shortName == uiState.microsoftVoice }
                             ?.compactDisplayName()
@@ -202,7 +206,7 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(onClick = { controller.testVoice() }) {
-                            Text(if (uiState.state == SimpleTtsController.State.LOADING) "准备中" else "测试语音")
+                            Text(if (uiState.state == TtsState.LOADING) "准备中" else "测试语音")
                         }
                         TextButton(onClick = { controller.stop() }) {
                             Text("停止")
@@ -211,9 +215,9 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
                     Text(
                         text = when {
                             uiState.errorMessage != null -> uiState.errorMessage.orEmpty()
-                            uiState.state == SimpleTtsController.State.PLAYING -> "正在播放：${uiState.currentSentence}"
-                            uiState.state == SimpleTtsController.State.LOADING -> "正在准备音频..."
-                            uiState.state == SimpleTtsController.State.PAUSED -> "已暂停"
+                            uiState.state == TtsState.PLAYING -> "正在播放：${uiState.currentSentence}"
+                            uiState.state == TtsState.LOADING -> "正在准备音频..."
+                            uiState.state == TtsState.PAUSED -> "已暂停"
                             else -> "当前服务：${uiState.provider.label}。点击测试语音后应该听到声音或看到错误信息。"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -231,8 +235,8 @@ fun CleanTtsSettingsPage(controller: SimpleTtsController) {
 
 @Composable
 private fun ProviderPickerDialog(
-    selectedProvider: SimpleTtsController.Provider,
-    onSelect: (SimpleTtsController.Provider) -> Unit,
+    selectedProvider: TtsProvider,
+    onSelect: (TtsProvider) -> Unit,
     onDismiss: () -> Unit,
 ) {
     SettingsPickerDialog(
@@ -240,11 +244,11 @@ private fun ProviderPickerDialog(
         subtitle = "新开始的朗读将使用所选服务",
         onDismiss = onDismiss,
     ) {
-        items(SimpleTtsController.Provider.entries, key = { it.name }) { provider ->
+        items(TtsProvider.entries, key = { it.name }) { provider ->
             val subtitle = when (provider) {
-                SimpleTtsController.Provider.SYSTEM -> "使用手机已安装的朗读引擎"
-                SimpleTtsController.Provider.MIMO -> "小米云端自然语音"
-                SimpleTtsController.Provider.MICROSOFT -> "Microsoft Azure Speech 云端音色"
+                TtsProvider.SYSTEM -> "使用手机已安装的朗读引擎"
+                TtsProvider.MIMO -> "小米云端自然语音"
+                TtsProvider.MICROSOFT -> "Microsoft Azure Speech 云端音色"
             }
             PickerOptionRow(
                 title = provider.label,
@@ -278,11 +282,11 @@ private fun SimpleVoicePickerDialog(
 
 @Composable
 private fun MicrosoftVoicePickerDialog(
-    voices: List<SimpleTtsController.MicrosoftVoice>,
+    voices: List<MicrosoftVoice>,
     selectedVoice: String,
     selectedLocale: String?,
     onLocaleChange: (String?) -> Unit,
-    onSelect: (SimpleTtsController.MicrosoftVoice) -> Unit,
+    onSelect: (MicrosoftVoice) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val groups = remember(voices) { groupMicrosoftVoices(voices) }
@@ -481,7 +485,7 @@ private fun PickerEmptyState(message: String) {
     }
 }
 
-private fun SimpleTtsController.MicrosoftVoice.compactDisplayName(): String =
+private fun MicrosoftVoice.compactDisplayName(): String =
     displayName
         .substringBeforeLast(" · $locale")
         .removePrefix("Microsoft ")
@@ -490,7 +494,7 @@ private fun SimpleTtsController.MicrosoftVoice.compactDisplayName(): String =
 internal data class MicrosoftVoiceGroup(
     val locale: String,
     val label: String,
-    val voices: List<SimpleTtsController.MicrosoftVoice>,
+    val voices: List<MicrosoftVoice>,
 )
 
 internal fun microsoftVoiceGroupLocaleTag(rawLocale: String): String {
@@ -504,7 +508,7 @@ internal fun microsoftVoiceGroupLocaleTag(rawLocale: String): String {
     }
 }
 internal fun groupMicrosoftVoices(
-    voices: List<SimpleTtsController.MicrosoftVoice>,
+    voices: List<MicrosoftVoice>,
     displayLocale: Locale = Locale.SIMPLIFIED_CHINESE,
 ): List<MicrosoftVoiceGroup> = voices
     .groupBy { voice -> microsoftVoiceGroupLocaleTag(voice.locale) }

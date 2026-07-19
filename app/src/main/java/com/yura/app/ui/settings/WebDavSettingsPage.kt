@@ -1,4 +1,4 @@
-﻿@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package com.yura.app.ui.settings
 
@@ -96,7 +96,7 @@ import com.yura.app.library.LibraryUiState
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
-import com.yura.app.reader.tts.SimpleTtsController
+import com.yura.tts.SimpleTtsController
 import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
 import com.yura.app.ui.shelf.LibraryTopBar

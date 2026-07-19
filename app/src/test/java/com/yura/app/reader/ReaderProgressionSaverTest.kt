@@ -50,4 +50,22 @@ class ReaderProgressionSaverTest {
 
         assertEquals(listOf("current"), saved)
     }
+
+    @Test
+    fun flushNowPersistsBeforeScopeShutdown() = runTest {
+        val saved = mutableListOf<String>()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val saver = ReaderProgressionSaver(
+            scope = this,
+            saveProgression = { _, json, _ -> saved += json },
+            dispatcher = dispatcher,
+            debounceMs = 10_000L,
+            now = { 1L },
+        )
+
+        saver.schedule(1L, "final")
+        saver.flushNow()
+
+        assertEquals(listOf("final"), saved)
+    }
 }

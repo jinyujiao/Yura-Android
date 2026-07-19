@@ -29,19 +29,22 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Velocity
 import java.util.Locale
 import kotlin.math.roundToInt
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.ColumnCount
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Spread
 import org.readium.r2.navigator.preferences.Theme
 
@@ -52,14 +55,26 @@ fun ReaderSettingsSheet(
     autoTheme: Boolean,
     onDismiss: () -> Unit,
     onAutoThemeChange: (Boolean) -> Unit,
+    onPreferencesPreviewChange: (EpubPreferences) -> Unit,
     onPreferencesChange: (EpubPreferences) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var previewPreferences by remember(preferences) { mutableStateOf(preferences) }
+    val listBoundaryConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset = if (available.y < 0f) Offset(0f, available.y) else Offset.Zero
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+                if (available.y < 0f) Velocity(0f, available.y) else Velocity.Zero
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        sheetGesturesEnabled = false,
+        sheetGesturesEnabled = true,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
@@ -68,7 +83,8 @@ fun ReaderSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .heightIn(max = 680.dp)
+                .heightIn(max = 600.dp)
+                .nestedScroll(listBoundaryConnection)
                 .overscroll(null),
             contentPadding = PaddingValues(start = 22.dp, top = 4.dp, end = 22.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -79,6 +95,116 @@ fun ReaderSettingsSheet(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
                 )
+            }
+
+            item {
+                PreferenceCard(title = "字体") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            PreferenceChoice(
+                                text = "默认",
+                                selected = preferences.fontFamily == null,
+                                onClick = {
+                                    onPreferencesChange(preferences.copy(fontFamily = null, publisherStyles = false))
+                                },
+                            )
+                        }
+                        item {
+                            PreferenceChoice(
+                                text = "宋体",
+                                selected = preferences.fontFamily == FontFamily.SERIF,
+                                onClick = {
+                                    onPreferencesChange(preferences.copy(fontFamily = FontFamily.SERIF, publisherStyles = false))
+                                },
+                            )
+                        }
+                        item {
+                            PreferenceChoice(
+                                text = "霞鹜文楷",
+                                selected = preferences.fontFamily == ReaderFonts.LXGW_WEN_KAI,
+                                onClick = {
+                                    onPreferencesChange(preferences.copy(fontFamily = ReaderFonts.LXGW_WEN_KAI, publisherStyles = false))
+                                },
+                            )
+                        }
+                    }
+
+                }
+            }
+
+            item {
+                PreferenceCard(title = "文字") {
+                    PreferenceSlider(
+                        title = "字号",
+                        valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
+                        value = (preferences.fontSize ?: 1.0).toFloat(),
+                        valueRange = 0.8f..2.0f,
+                        steps = 11,
+                        onValueChange = { value ->
+                            onPreferencesPreviewChange(preferences.copy(fontSize = value.toDouble(), publisherStyles = false))
+                        },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false))
+                        },
+                    )
+                    PreferenceSlider(
+                        title = "行高",
+                        valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
+                        value = (preferences.lineHeight ?: 1.5).toFloat(),
+                        valueRange = 1.0f..2.2f,
+                        steps = 5,
+                        onValueChange = { value ->
+                            onPreferencesPreviewChange(preferences.copy(lineHeight = value.toDouble(), publisherStyles = false))
+                        },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false))
+                        },
+                    )
+                    PreferenceSlider(
+                        title = "字间距",
+                        valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
+                        value = (preferences.letterSpacing ?: 0.0).toFloat(),
+                        valueRange = 0f..1f,
+                        steps = 9,
+                        onValueChange = { value ->
+                            onPreferencesPreviewChange(preferences.copy(letterSpacing = value.toDouble(), publisherStyles = false))
+                        },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false))
+                        },
+                    )
+                }
+            }
+
+            item {
+                PreferenceCard(title = "段落") {
+                    PreferenceSlider(
+                        title = "段首缩进",
+                        valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} 字",
+                        value = (preferences.paragraphIndent ?: 0.0).toFloat(),
+                        valueRange = 0f..4f,
+                        steps = 3,
+                        onValueChange = { value ->
+                            onPreferencesPreviewChange(preferences.copy(paragraphIndent = value.toDouble(), publisherStyles = false))
+                        },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(paragraphIndent = value.roundToInt().toDouble(), publisherStyles = false))
+                        },
+                    )
+                    PreferenceSlider(
+                        title = "段间距",
+                        valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
+                        value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
+                        valueRange = 0f..2f,
+                        steps = 9,
+                        onValueChange = { value ->
+                            onPreferencesPreviewChange(preferences.copy(paragraphSpacing = value.toDouble(), publisherStyles = false))
+                        },
+                        onValueChangeFinished = { value ->
+                            onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false))
+                        },
+                    )
+                }
             }
 
             item {
@@ -126,76 +252,6 @@ fun ReaderSettingsSheet(
                     }
                 }
             }
-
-            item {
-                ReadingPreview(previewPreferences)
-            }
-
-            item {
-                PreferenceCard(title = "文字") {
-                    PreferenceSlider(
-                        title = "字号",
-                        valueLabel = "${((preferences.fontSize ?: 1.0) * 100).toInt()}%",
-                        value = (preferences.fontSize ?: 1.0).toFloat(),
-                        valueRange = 0.8f..2.0f,
-                        steps = 11,
-                        onValueChange = { value -> previewPreferences = previewPreferences.copy(fontSize = value.toDouble()) },
-                        onValueChangeFinished = { value ->
-                            onPreferencesChange(preferences.copy(fontSize = roundToStep(value, 0.1f), publisherStyles = false))
-                        },
-                    )
-                    PreferenceSlider(
-                        title = "行高",
-                        valueLabel = String.format(Locale.ROOT, "%.1f", preferences.lineHeight ?: 1.5),
-                        value = (preferences.lineHeight ?: 1.5).toFloat(),
-                        valueRange = 1.0f..2.2f,
-                        steps = 5,
-                        onValueChange = { value -> previewPreferences = previewPreferences.copy(lineHeight = value.toDouble()) },
-                        onValueChangeFinished = { value ->
-                            onPreferencesChange(preferences.copy(lineHeight = roundToStep(value, 0.2f), publisherStyles = false))
-                        },
-                    )
-                    PreferenceSlider(
-                        title = "字间距",
-                        valueLabel = "${((preferences.letterSpacing ?: 0.0) * 100).toInt()}%",
-                        value = (preferences.letterSpacing ?: 0.0).toFloat(),
-                        valueRange = 0f..1f,
-                        steps = 9,
-                        onValueChange = { value -> previewPreferences = previewPreferences.copy(letterSpacing = value.toDouble()) },
-                        onValueChangeFinished = { value ->
-                            onPreferencesChange(preferences.copy(letterSpacing = roundToStep(value, 0.1f), publisherStyles = false))
-                        },
-                    )
-                }
-            }
-
-            item {
-                PreferenceCard(title = "段落") {
-                    PreferenceSlider(
-                        title = "段首缩进",
-                        valueLabel = "${(preferences.paragraphIndent ?: 0.0).toInt()} 字",
-                        value = (preferences.paragraphIndent ?: 0.0).toFloat(),
-                        valueRange = 0f..4f,
-                        steps = 3,
-                        onValueChange = { value -> previewPreferences = previewPreferences.copy(paragraphIndent = value.toDouble()) },
-                        onValueChangeFinished = { value ->
-                            onPreferencesChange(preferences.copy(paragraphIndent = value.roundToInt().toDouble(), publisherStyles = false))
-                        },
-                    )
-                    PreferenceSlider(
-                        title = "段间距",
-                        valueLabel = "${((preferences.paragraphSpacing ?: 0.0) * 100).toInt()}%",
-                        value = (preferences.paragraphSpacing ?: 0.0).toFloat(),
-                        valueRange = 0f..2f,
-                        steps = 9,
-                        onValueChange = { value -> previewPreferences = previewPreferences.copy(paragraphSpacing = value.toDouble()) },
-                        onValueChangeFinished = { value ->
-                            onPreferencesChange(preferences.copy(paragraphSpacing = roundToStep(value, 0.2f), publisherStyles = false))
-                        },
-                    )
-                }
-            }
-
             item {
                 PreferenceCard(title = "阅读模式") {
                     PreferenceSwitch(
@@ -252,37 +308,6 @@ fun ReaderSettingsSheet(
                     Text("恢复默认排版", fontWeight = FontWeight.Bold)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ReadingPreview(preferences: EpubPreferences) {
-    val scale = (preferences.fontSize ?: 1.0).toFloat().coerceIn(0.8f, 2f)
-    val fontSize = 16f * scale
-    val lineHeight = fontSize * (preferences.lineHeight ?: 1.5).toFloat().coerceIn(1f, 2.2f)
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                "排版预览",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "阅读让时间慢下来，也让遥远的世界变得触手可及。",
-                fontSize = fontSize.sp,
-                lineHeight = lineHeight.sp,
-                letterSpacing = (preferences.letterSpacing ?: 0.0).toFloat().em,
-            )
         }
     }
 }

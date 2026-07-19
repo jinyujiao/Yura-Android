@@ -144,6 +144,8 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
+    implementation(project(":tts"))
+
     implementation(project(":readium:readium-shared"))
     implementation(project(":readium:readium-streamer"))
     implementation(project(":readium:readium-navigator"))
