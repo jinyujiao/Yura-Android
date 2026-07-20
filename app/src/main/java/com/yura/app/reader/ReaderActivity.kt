@@ -296,7 +296,11 @@ class ReaderActivity : FragmentActivity() {
         ) {
             when (val current = state) {
                 ReaderState.Loading -> LoadingReader()
-                is ReaderState.Error -> ErrorReader(message = current.message, onBack = ::finish)
+                is ReaderState.Error -> ErrorReader(
+                    message = current.message,
+                    onBack = ::finish,
+                    backLabel = if (previewMode) "返回预览" else "返回书架",
+                )
                 is ReaderState.Ready -> ReadyReader(
                     data = current,
                     controlsVisible = controlsVisible,
@@ -582,7 +586,11 @@ class ReaderActivity : FragmentActivity() {
                 exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
-                ReaderTopBar(title = data.book.title, onBack = ::finish)
+                ReaderTopBar(
+                    title = data.book.title,
+                    onBack = ::finish,
+                    backLabel = if (previewMode) "返回预览" else "返回书架",
+                )
             }
 
             AnimatedVisibility(
