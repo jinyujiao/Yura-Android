@@ -115,6 +115,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var sessionId = 0L
     private var chapterPosition = -1
     private var stopping = false
+    private var userPaused = false
     private var progressTickerRunning = false
     private var testPlayback = false
     private var mediaTitle = "Yura 朗读"
@@ -158,7 +159,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                             }
                         }
                         Player.STATE_ENDED -> {
-                            if (activePlayerSentenceIndex() == currentSentenceIndex) {
+                            if (activePlayerSentenceIndex() == currentSentenceIndex && !userPaused) {
+                                Log.d(TAG, "player ended index=$currentSentenceIndex; advancing")
                                 playNextSentence()
                             }
                         }
@@ -168,13 +170,18 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (stopping || currentSentenceIndex < 0) return
-                    _state.update {
-                        it.copy(
-                            state = if (isPlaying) TtsState.PLAYING else TtsState.PAUSED,
-                            errorMessage = null,
-                        )
+                    if (isPlaying) {
+                        userPaused = false
+                        _state.update { it.copy(state = TtsState.PLAYING, errorMessage = null) }
+                        startProgressTicker()
+                        return
                     }
-                    if (isPlaying) startProgressTicker()
+                    val playbackState = player.playbackState
+                    if (userPaused && playbackState == Player.STATE_READY) {
+                        _state.update { it.copy(state = TtsState.PAUSED, errorMessage = null) }
+                    } else if (playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE) {
+                        _state.update { it.copy(state = TtsState.LOADING, errorMessage = null) }
+                    }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -466,6 +473,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             "speak provider=${_state.value.provider} items=${items.size} start=$startParagraphIndex keepSession=$keepPlaybackSession initialized=$initialized"
         )
         testPlayback = false
+        userPaused = false
         sessionId++
         this.chapterPosition = chapterPosition
         stopping = false
@@ -520,6 +528,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun play() {
         if (speechItems.isEmpty()) return
+        userPaused = false
         if (_state.value.state == TtsState.PAUSED && player.playbackState != Player.STATE_IDLE) {
             player.play()
             _state.update { it.copy(state = TtsState.PLAYING, errorMessage = null) }
@@ -532,6 +541,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     fun testVoice(text: String = "这是一段测试朗读，用来确认当前语音和音色。") {
         Log.d(TAG, "testVoice provider=${_state.value.provider} initialized=$initialized hasMimo=${_state.value.hasMimoApiKey} hasMs=${_state.value.hasMicrosoftApiKey}")
         testPlayback = true
+        userPaused = false
         sessionId++
         chapterPosition = -1
         stopping = false
@@ -570,6 +580,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun pause() {
+        userPaused = true
         tts.stop()
         player.pause()
         synthesizingIndex = -1
@@ -580,6 +591,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun stop() {
         Log.d(TAG, "stop")
+        userPaused = false
         wakeLockManager.release()
         sessionId++
         pendingParagraphIndex = null
@@ -712,6 +724,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
         val safeIndex = sentenceIndex.coerceIn(0, speechItems.lastIndex)
         sessionId++
+        userPaused = false
         stopping = false
         if (resetPlayer) {
             tts.stop()
