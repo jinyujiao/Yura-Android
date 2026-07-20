@@ -113,6 +113,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var synthesizingIndex = -1
     private var pendingPrefetchPlaybackIndex = -1
     private var lastStartedPlaybackRequest: TtsRequestIdentity? = null
+    private var lastHandledEndedRequest: TtsRequestIdentity? = null
     private var sessionId = 0L
     private var chapterPosition = -1
     private var stopping = false
@@ -160,8 +161,14 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                             }
                         }
                         Player.STATE_ENDED -> {
-                            if (activePlayerSentenceIndex() == currentSentenceIndex && !userPaused) {
-                                Log.d(TAG, "player ended index=$currentSentenceIndex; advancing")
+                            val endedRequest = activePlayerRequest()
+                            if (endedRequest != null &&
+                                endedRequest.queueSequence == currentSentenceIndex &&
+                                !userPaused &&
+                                endedRequest != lastHandledEndedRequest
+                            ) {
+                                lastHandledEndedRequest = endedRequest
+                                Log.d(TAG, "player ended request=$endedRequest; advancing")
                                 playNextSentence()
                             }
                         }
@@ -477,6 +484,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         userPaused = false
         wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         sessionId++
+        lastHandledEndedRequest = null
         this.chapterPosition = chapterPosition
         stopping = false
         if (!keepPlaybackSession) {
@@ -729,6 +737,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val safeIndex = sentenceIndex.coerceIn(0, speechItems.lastIndex)
         wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         sessionId++
+        lastHandledEndedRequest = null
         userPaused = false
         stopping = false
         if (resetPlayer) {
@@ -882,10 +891,13 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         Log.d(TAG, "synthesizeMicrosoft voice=${preferencesStore.microsoftVoice()} region=$region textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
         cloudTtsClient.synthesizeMicrosoft(text, apiKey, region, preferencesStore.microsoftVoice(), file)
     }
-    private fun activePlayerSentenceIndex(): Int? {
+    private fun activePlayerRequest(): TtsRequestIdentity? {
         val request = TtsRequestId.parseMedia(player.currentMediaItem?.mediaId) ?: return null
-        return request.queueSequence.takeIf { isCurrentRequest(request) }
+        return request.takeIf { isCurrentRequest(it) }
     }
+
+    private fun activePlayerSentenceIndex(): Int? = activePlayerRequest()?.queueSequence
+
     private fun playSynthesizedFile(sentenceIndex: Int) {
         val file = audioCache.fileFor(sessionId, sentenceIndex)
         Log.d(TAG, "playSynthesizedFile index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
