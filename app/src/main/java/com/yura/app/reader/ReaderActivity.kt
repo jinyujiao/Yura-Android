@@ -622,12 +622,12 @@ class ReaderActivity : FragmentActivity() {
                 }
                 function cleanTtsText(text) {
                     var cleaned = (text || '')
-                        .replace(/[“”"'‘’]\s*(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}[“”"'‘’]/g, ' ')
-                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, ' ')
-                        .replace(/[—–-]{2,}/g, ' ')
+                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, '……')
+                        .replace(/[—–-]{2,}/g, '——')
                         .replace(/[~～_＿=＝*＊#＃]{2,}/g, ' ')
                         .replace(/[“”"'‘’]\s+[“”"'‘’]/g, ' ')
-                        .replace(/([。！？!?，,、；;：:])\1+/g, '$1')
+                        .replace(/([。！？!?])\1{2,}/g, '$1$1')
+                        .replace(/([，,、；;：:])\1+/g, '$1')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();
@@ -720,7 +720,7 @@ class ReaderActivity : FragmentActivity() {
             val firstVisibleRaw = payload?.optInt("firstVisible", 0) ?: 0
             val paragraphs = mutableListOf<String>()
             rawParagraphs.forEach { rawText ->
-                val cleaned = ReaderTtsParagraphParser.clean(rawText)
+                val cleaned = ReaderTtsParagraphParser.cleanForTts(rawText)
                 if (cleaned.isNotBlank()) {
                     paragraphs += cleaned
                 }
@@ -847,12 +847,12 @@ class ReaderActivity : FragmentActivity() {
                 }
                 function cleanTtsText(text) {
                     var cleaned = (text || '')
-                        .replace(/[“”"'‘’]\s*(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}[“”"'‘’]/g, ' ')
-                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, ' ')
-                        .replace(/[—–-]{2,}/g, ' ')
+                        .replace(/(?:[.．｡﹒․·•・…⋯︙︰]\s*){2,}/g, '……')
+                        .replace(/[—–-]{2,}/g, '——')
                         .replace(/[~～_＿=＝*＊#＃]{2,}/g, ' ')
                         .replace(/[“”"'‘’]\s+[“”"'‘’]/g, ' ')
-                        .replace(/([。！？!?，,、；;：:])\1+/g, '$1')
+                        .replace(/([。！？!?])\1{2,}/g, '$1$1')
+                        .replace(/([，,、；;：:])\1+/g, '$1')
                         .replace(/[\u200B-\u200D\uFEFF]/g, '')
                         .replace(/\s+/g, ' ')
                         .trim();

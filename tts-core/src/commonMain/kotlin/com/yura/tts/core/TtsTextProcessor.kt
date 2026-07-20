@@ -1,8 +1,16 @@
 package com.yura.tts.core
 
 class TtsTextProcessor {
-    fun splitSentences(text: String): List<String> {
-        val cleaned = clean(text)
+    fun splitSentences(text: String): List<String> =
+        splitPreparedSentences(clean(text), ::splitLongChunk)
+
+    fun splitSourceSentences(text: String): List<String> =
+        splitPreparedSentences(prepareSource(text), ::splitLongSourceChunk)
+
+    private fun splitPreparedSentences(
+        cleaned: String,
+        longChunkSplitter: (String) -> List<String>,
+    ): List<String> {
         if (cleaned.isBlank()) return emptyList()
 
         val sentences = mutableListOf<String>()
@@ -57,7 +65,7 @@ class TtsTextProcessor {
         if (start < cleaned.length) {
             sentences += cleaned.substring(start).trim()
         }
-        return sentences.filter(String::isNotBlank).ifEmpty { listOf(cleaned) }.flatMap(::splitLongChunk)
+        return sentences.filter(String::isNotBlank).ifEmpty { listOf(cleaned) }.flatMap(longChunkSplitter)
     }
 
     fun clean(text: String): String {
@@ -83,6 +91,150 @@ class TtsTextProcessor {
         return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
     }
 
+    fun cleanForMimo(text: String): String {
+        var cleaned = decodeHtmlEntities(text)
+        cleaned = MARKDOWN_LINK_REGEX.replace(cleaned, "$1")
+        cleaned = normalizeAngleTagsForMimo(cleaned)
+            .replace(MARKDOWN_DECORATION_REGEX, " ")
+            .replace(BARE_ELLIPSIS_REGEX, "……")
+            .replace(LONG_DASH_REGEX, "——")
+            .replace(DECORATIVE_REPEAT_REGEX, " ")
+            .replace(MIMO_DECORATIVE_REPEAT_REGEX, " ")
+            .replace(MIMO_SEPARATOR_REPEAT_REGEX, " ")
+            .replace(REPLACEMENT_CHARACTER_REGEX, "")
+            .replace(PRIVATE_USE_REGEX, "")
+
+        cleaned = stripEmoji(cleaned)
+        cleaned = neutralizeMimoTags(cleaned)
+            .replace(MIMO_DECORATIVE_EDGE_REGEX, "")
+            .replace(MIMO_DECORATIVE_AFTER_OPENER_REGEX, "$1")
+            .replace(MIMO_DECORATIVE_BEFORE_CLOSER_REGEX, "$1")
+
+        cleaned = TextNormalizer.normalize(cleaned)
+        cleaned = normalizeHalfWidthPunctuation(cleaned)
+        cleaned = normalizeMimoTerminators(cleaned)
+            .replace(REPEATED_SEPARATOR_REGEX) { match -> match.value.last().toString() }
+            .replace(SPACE_BEFORE_CLOSER_REGEX, "$1")
+            .replace(SPACE_AFTER_OPENER_REGEX, "$1")
+            .replace(MIMO_SPACE_BEFORE_CLOSER_REGEX, "$1")
+            .replace(MIMO_SPACE_AFTER_OPENER_REGEX, "$1")
+            .replace(CJK_BEFORE_LATIN_NUMBER_REGEX, "$1 $2")
+            .replace(LATIN_NUMBER_BEFORE_CJK_REGEX, "$1 $2")
+            .replace(ZERO_WIDTH_REGEX, "")
+            .replace(WHITESPACE_REGEX, " ")
+            .trim()
+        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
+    }
+
+    private fun prepareSource(text: String): String = text
+        .replace(BARE_ELLIPSIS_REGEX, "……")
+        .replace(LONG_DASH_REGEX, "——")
+        .replace(ZERO_WIDTH_REGEX, "")
+        .replace(WHITESPACE_REGEX, " ")
+        .trim()
+
+    private fun decodeHtmlEntities(text: String): String {
+        if ('&' !in text) return text
+        return HTML_ENTITY_REGEX.replace(text) { match ->
+            val body = match.groupValues[1]
+            when {
+                body.startsWith("#x", ignoreCase = true) -> body.substring(2).toIntOrNull(16)?.let(::codePointToString)
+                body.startsWith("#") -> body.substring(1).toIntOrNull()?.let(::codePointToString)
+                else -> HTML_ENTITIES[body.lowercase()]
+            } ?: match.value
+        }
+    }
+
+    private fun codePointToString(codePoint: Int): String? = when (codePoint) {
+        in 0..0xFFFF -> codePoint.toChar().toString()
+        in 0x10000..0x10FFFF -> {
+            val value = codePoint - 0x10000
+            charArrayOf(
+                ((value shr 10) + 0xD800).toChar(),
+                ((value and 0x3FF) + 0xDC00).toChar(),
+            ).concatToString()
+        }
+        else -> null
+    }
+
+    private fun normalizeAngleTagsForMimo(text: String): String = HTML_TAG_REGEX.replace(text) { match ->
+        val raw = match.value
+        if (raw.startsWith("<!--")) return@replace " "
+        val content = raw.substring(1, raw.length - 1).trim()
+        val tagName = content
+            .removePrefix("/")
+            .substringBefore(' ')
+            .substringBefore('/')
+            .lowercase()
+        if (tagName in HTML_TAG_NAMES) " " else "【$content】"
+    }
+
+    private fun neutralizeMimoTags(text: String): String = buildString(text.length) {
+        text.forEach { character ->
+            append(
+                when (character) {
+                    '[', '［' -> '【'
+                    ']', '］' -> '】'
+                    '(', '（' -> '〔'
+                    ')', '）' -> '〕'
+                    else -> character
+                }
+            )
+        }
+    }
+
+    private fun stripEmoji(text: String): String = buildString(text.length) {
+        var index = 0
+        while (index < text.length) {
+            val first = text[index]
+            val codePoint: Int
+            val width: Int
+            if (first.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) {
+                codePoint = 0x10000 + ((first.code - 0xD800) shl 10) + (text[index + 1].code - 0xDC00)
+                width = 2
+            } else {
+                codePoint = first.code
+                width = 1
+            }
+            if (!isEmojiCodePoint(codePoint)) {
+                append(text, index, index + width)
+            }
+            index += width
+        }
+    }
+
+    private fun isEmojiCodePoint(codePoint: Int): Boolean =
+        codePoint in 0x1F000..0x1FAFF ||
+            codePoint in 0x2600..0x27BF ||
+            codePoint in 0x1F1E6..0x1F1FF ||
+            codePoint in 0x1F3FB..0x1F3FF ||
+            codePoint == 0x200D ||
+            codePoint == 0x20E3 ||
+            codePoint == 0xFE0E ||
+            codePoint == 0xFE0F ||
+            codePoint == 0x00A9 ||
+            codePoint == 0x00AE ||
+            codePoint == 0x2122
+
+    private fun normalizeMimoTerminators(text: String): String = MIMO_REPEATED_TERMINATOR_REGEX.replace(text) { match ->
+        limitRepeatedCharacters(match.value, maximumRunLength = 2)
+    }
+
+    private fun limitRepeatedCharacters(value: String, maximumRunLength: Int): String = buildString(value.length) {
+        var previous = Char.MIN_VALUE
+        var repeated = 0
+        value.forEach { character ->
+            if (character == previous) {
+                repeated++
+            } else {
+                previous = character
+                repeated = 1
+            }
+            if (repeated <= maximumRunLength) append(character)
+        }
+    }
+
+
     private fun normalizeHalfWidthPunctuation(text: String): String = buildString(text.length) {
         text.forEach { character -> append(HALF_WIDTH_PUNCTUATION[character] ?: character) }
     }
@@ -106,7 +258,9 @@ class TtsTextProcessor {
     }
 
     private fun continuesAfterClosingQuote(text: String, closingQuoteIndex: Int): Boolean {
-        val tail = text.substring(closingQuoteIndex + 1).trimStart()
+        val rawTail = text.substring(closingQuoteIndex + 1)
+        val tail = rawTail.trimStart()
+        if (text[closingQuoteIndex] in INLINE_LABEL_CLOSERS && tail.isNotEmpty()) return true
         return QUOTE_CONTINUATION_PREFIXES.any(tail::startsWith) ||
             QUOTE_ATTRIBUTION_REGEX.containsMatchIn(tail)
     }
@@ -124,8 +278,11 @@ class TtsTextProcessor {
         return true
     }
 
-    private fun splitLongChunk(text: String): List<String> {
-        val cleaned = clean(text)
+    private fun splitLongChunk(text: String): List<String> = splitLongPrepared(clean(text))
+
+    private fun splitLongSourceChunk(text: String): List<String> = splitLongPrepared(prepareSource(text))
+
+    private fun splitLongPrepared(cleaned: String): List<String> {
         if (cleaned.length <= MAX_CHUNK_LENGTH) return listOf(cleaned)
 
         val chunks = mutableListOf<String>()
@@ -163,9 +320,10 @@ class TtsTextProcessor {
         const val MAX_CHUNK_LENGTH = 160
         const val MIN_CHUNK_LENGTH = 70
 
-        val OPENING_QUOTES = setOf('“', '‘', '「', '『', '【', '《', '（')
-        val CLOSING_QUOTES = setOf('”', '’', '」', '』', '】', '》', '）')
+        val OPENING_QUOTES = setOf('“', '‘', '「', '『', '【', '〖', '〔', '《', '（', '[', '［')
+        val CLOSING_QUOTES = setOf('”', '’', '」', '』', '】', '〗', '〕', '》', '）', ']', '］')
         val TRAILING_CLOSERS = CLOSING_QUOTES + setOf('"', 39.toChar())
+        val INLINE_LABEL_CLOSERS = setOf(']', '］', '】', '〗', '〕')
         val HARD_TERMINATORS = setOf('。', '！', '？', '!', '?')
         val HALF_WIDTH_PUNCTUATION = mapOf(
             ',' to '，',
@@ -196,6 +354,30 @@ class TtsTextProcessor {
         val QUOTE_ATTRIBUTION_REGEX = Regex("""^(?:他|她|他们|她们)(?:说|问|答|喊|叫|道)""")
         val ABBREVIATION_SUFFIX_REGEX = Regex(
             """(?i)(?:\b(?:mr|mrs|ms|dr|st|vs|etc|prof|sr|jr)\.|\b(?:e\.g|i\.e)\.)$"""
+        )
+
+        val MARKDOWN_LINK_REGEX = Regex("""\[([^\]]+)]\((?:https?://|www\.)[^)]+\)""", RegexOption.IGNORE_CASE)
+        val HTML_ENTITY_REGEX = Regex("""&([a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);""")
+        val MIMO_DECORATIVE_REPEAT_REGEX = Regex("""[△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]{2,}""")
+        val MIMO_SEPARATOR_REPEAT_REGEX = Regex("""[/\\|]{3,}""")
+        val MIMO_DECORATIVE_EDGE_REGEX = Regex("""^[\s△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+|[\s△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+$""")
+        val MIMO_DECORATIVE_AFTER_OPENER_REGEX = Regex("""([【〖〔「『《“‘])\s*[△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+""")
+        val MIMO_DECORATIVE_BEFORE_CLOSER_REGEX = Regex("""[△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+\s*([】〗〕」』》”’])""")
+        val MIMO_REPEATED_TERMINATOR_REGEX = Regex("""[。！？]{2,}""")
+        val MIMO_SPACE_BEFORE_CLOSER_REGEX = Regex("""\s+([〗〕］])""")
+        val MIMO_SPACE_AFTER_OPENER_REGEX = Regex("""([〖〔［])\s+""")
+        val REPLACEMENT_CHARACTER_REGEX = Regex("""�""")
+        val PRIVATE_USE_REGEX = Regex("""[\uE000-\uF8FF]""")
+        val HTML_TAG_NAMES = setOf(
+            "html", "head", "body", "title", "meta", "link", "style", "script", "p", "br", "div", "span",
+            "section", "article", "header", "footer", "main", "nav", "aside", "h1", "h2", "h3", "h4", "h5", "h6",
+            "ul", "ol", "li", "blockquote", "pre", "code", "em", "strong", "b", "i", "u", "s", "a", "img", "ruby",
+            "rt", "rp", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "hr", "audio", "video", "source",
+        )
+        val HTML_ENTITIES = mapOf(
+            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to " ",
+            "ndash" to "–", "mdash" to "—", "hellip" to "……", "ldquo" to "“", "rdquo" to "”",
+            "lsquo" to "‘", "rsquo" to "’", "middot" to "·", "copy" to "©", "reg" to "®", "trade" to "™",
         )
     }
 }

@@ -46,4 +46,17 @@ class ReaderTtsParagraphParserTest {
         assertEquals(listOf("外层内容", "内层内容"), ReaderTtsParagraphParser.parse(html))
     }
 
+
+    @Test
+    fun preservesProsodyForProviderSpecificCleaning() {
+        val source = "“咿哈哈……等等？！——”"
+
+        assertEquals("“咿哈哈 等等！ ”", ReaderTtsParagraphParser.clean(source))
+        assertEquals("“咿哈哈……等等？！——”", ReaderTtsParagraphParser.cleanForTts(source))
+        assertEquals(
+            listOf("“咿哈哈……等等？！——”"),
+            ReaderTtsParagraphParser.parse("<html><body><p>$source</p></body></html>"),
+        )
+    }
+
 }

@@ -16,7 +16,11 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.yura.tts.core.MicrosoftTtsTextProfile
 import com.yura.tts.core.MicrosoftVoice
+import com.yura.tts.core.MimoTtsTextProfile
+import com.yura.tts.core.SystemTtsTextProfile
+import com.yura.tts.core.TtsTextProfile
 import com.yura.tts.core.TtsDefaults
 import com.yura.tts.core.TtsPlaybackPolicy
 import com.yura.tts.core.TtsProvider
@@ -39,6 +43,14 @@ import kotlin.math.roundToLong
 
 class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
+    private data class SpeechSource(
+        val paragraphIndex: Int,
+        val sentenceIndexInParagraph: Int,
+        val sentenceGlobalIndex: Int,
+        val sourceText: String,
+        val fallbackText: String,
+    )
+
     private data class SpeechItem(
         val paragraphIndex: Int,
         val sentenceIndexInParagraph: Int,
@@ -50,6 +62,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private val appContext = context.applicationContext
     private val locale = Locale.getDefault()
     private val textProcessor = TtsTextProcessor()
+    private val systemTextProfile = SystemTtsTextProfile(textProcessor)
+    private val microsoftTextProfile = MicrosoftTtsTextProfile(textProcessor)
+    private val mimoTextProfile = MimoTtsTextProfile(textProcessor)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val audioCache = TtsAudioCache(appContext)
@@ -83,7 +98,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         onNext = { mainHandler.post(::next) },
         onStop = { mainHandler.post(::stop) },
     )
+    private val sourceParagraphs = mutableListOf<String>()
     private val paragraphs = mutableListOf<String>()
+    private val speechSources = mutableListOf<SpeechSource>()
     private val speechItems = mutableListOf<SpeechItem>()
     private val prefetchingIndices = mutableSetOf<Int>()
     private val prefetchedIndices = mutableSetOf<Int>()
@@ -280,7 +297,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         Log.d(TAG, "selectProvider provider=$provider")
         if (provider == _state.value.provider) return
 
-        val resumeSentence = TtsPlaybackPolicy.providerSwitchResumeSequence(
+        val requestedResumeSentence = TtsPlaybackPolicy.providerSwitchResumeSequence(
             currentQueueSequence = currentSentenceIndex,
             stateQueueSequence = _state.value.sentenceIndex,
             queueSize = speechItems.size,
@@ -288,10 +305,14 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         )
         preferencesStore.setProvider(provider)
         cancelPlaybackForProviderSwitch()
+        rebuildSpeechItems(provider)
+        val resumeSentence = requestedResumeSentence?.takeIf { it in speechItems.indices }
         _state.update {
             it.copy(
                 state = if (resumeSentence == null) TtsState.IDLE else TtsState.LOADING,
                 provider = provider,
+                sentenceTotal = speechItems.size,
+                currentSentence = resumeSentence?.let { index -> speechItems[index].text }.orEmpty(),
                 engineName = displayEngineName(provider),
                 errorMessage = null,
             )
@@ -457,12 +478,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             ensureMediaControls()
         }
 
-        paragraphs.clear()
-        paragraphs.addAll(items.map { textProcessor.clean(it) }.filter { it.isNotBlank() })
+        replaceParagraphs(items)
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
-        rebuildSpeechItems()
         Log.d(TAG, "speak split paragraphs=${paragraphs.size} speechItems=${speechItems.size}")
 
         val safeParagraph = startParagraphIndex.coerceIn(
@@ -521,21 +540,19 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         audioCache.clear()
         ensureMediaControls()
 
-        paragraphs.clear()
-        paragraphs += textProcessor.clean(text)
+        replaceParagraphs(listOf(text))
         prefetchingIndices.clear()
         prefetchedIndices.clear()
-        rebuildSpeechItems()
         _state.value = _state.value.copy(
             state = TtsState.LOADING,
             paragraphIndex = 0,
-            paragraphTotal = 1,
+            paragraphTotal = paragraphs.size,
             sentenceIndex = 0,
             sentenceTotal = speechItems.size,
             sentencePositionMs = 0,
             sentenceDurationMs = 0,
-            currentSentence = text,
-            currentParagraph = text,
+            currentSentence = speechItems.firstOrNull()?.text.orEmpty(),
+            currentParagraph = paragraphs.firstOrNull().orEmpty(),
             engineName = displayEngineName(),
             errorMessage = null,
         )
@@ -617,22 +634,60 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         tts.shutdown()
     }
 
-    private fun rebuildSpeechItems() {
-        speechItems.clear()
+    private fun replaceParagraphs(items: List<String>) {
+        sourceParagraphs.clear()
+        paragraphs.clear()
+        items.forEach { source ->
+            val displayText = textProcessor.clean(source)
+            if (displayText.isNotBlank()) {
+                sourceParagraphs += source
+                paragraphs += displayText
+            }
+        }
+        rebuildSpeechSources()
+        rebuildSpeechItems()
+    }
+
+    private fun rebuildSpeechSources() {
+        speechSources.clear()
         var globalIndex = 0
-        paragraphs.forEachIndexed { paragraphIndex, paragraph ->
-            textProcessor.splitSentences(textProcessor.clean(paragraph)).forEachIndexed { sentenceIndex, sentence ->
-                val cleanedSentence = textProcessor.clean(sentence)
-                speechItems += SpeechItem(
+        sourceParagraphs.forEachIndexed { paragraphIndex, paragraph ->
+            var sentenceIndexInParagraph = 0
+            textProcessor.splitSourceSentences(paragraph).forEach { sourceSentence ->
+                val fallbackText = textProcessor.clean(sourceSentence)
+                if (fallbackText.isBlank()) return@forEach
+                speechSources += SpeechSource(
                     paragraphIndex = paragraphIndex,
-                    sentenceIndexInParagraph = sentenceIndex,
+                    sentenceIndexInParagraph = sentenceIndexInParagraph,
                     sentenceGlobalIndex = globalIndex,
-                    text = cleanedSentence,
-                    textHash = TtsRequestId.textHash(cleanedSentence),
+                    sourceText = sourceSentence,
+                    fallbackText = fallbackText,
                 )
+                sentenceIndexInParagraph++
                 globalIndex++
             }
         }
+    }
+
+    private fun rebuildSpeechItems(provider: TtsProvider = _state.value.provider) {
+        val profile = textProfile(provider)
+        speechItems.clear()
+        speechSources.forEach { source ->
+            val preparedText = profile.prepare(source.sourceText).ifBlank { source.fallbackText }
+            speechItems += SpeechItem(
+                paragraphIndex = source.paragraphIndex,
+                sentenceIndexInParagraph = source.sentenceIndexInParagraph,
+                sentenceGlobalIndex = source.sentenceGlobalIndex,
+                text = preparedText,
+                textHash = TtsRequestId.textHash(preparedText),
+            )
+        }
+    }
+
+    private fun textProfile(provider: TtsProvider): TtsTextProfile = when (provider) {
+        TtsProvider.SYSTEM -> systemTextProfile
+        TtsProvider.MIMO -> mimoTextProfile
+        TtsProvider.MICROSOFT -> microsoftTextProfile
     }
 
     private fun ensureMediaControls() = mediaSessionManager.ensure()

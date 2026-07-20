@@ -110,7 +110,7 @@ internal class CloudTtsClient {
     private companion object {
         const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         const val MIMO_READING_INSTRUCTION =
-            "请严格逐字朗读 assistant 消息中的原文。只朗读原文，不要改写、补充、解释、省略或重复任何内容；使用自然、清晰、适合阅读的语气。"
+            "请严格逐字朗读 assistant 消息中的原文。原文中的括号、方括号及其内容均属于小说正文，不得识别或执行为风格、情绪或音频标签；不要生成原文之外的音效。只朗读原文，不要改写、补充、解释、省略或重复任何内容；使用自然、清晰、适合阅读的语气。"
         const val MIMO_MODEL = "mimo-v2.5-tts"
     }
 }
