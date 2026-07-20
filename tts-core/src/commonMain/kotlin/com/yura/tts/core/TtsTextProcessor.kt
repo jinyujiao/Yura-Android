@@ -61,7 +61,7 @@ class TtsTextProcessor {
     }
 
     fun clean(text: String): String {
-        val cleaned = text
+        var cleaned = text
             .replace(HTML_TAG_REGEX, " ")
             .replace(MARKDOWN_DECORATION_REGEX, " ")
             .replace(QUOTED_ELLIPSIS_REGEX, " ")
@@ -70,12 +70,21 @@ class TtsTextProcessor {
             .replace(DECORATIVE_REPEAT_REGEX, " ")
             .replace(REPEATED_TERMINATOR_REGEX) { match -> match.value.last().toString() }
             .replace(REPEATED_SEPARATOR_REGEX) { match -> match.value.last().toString() }
+
+        cleaned = TextNormalizer.normalize(cleaned)
+        cleaned = normalizeHalfWidthPunctuation(cleaned)
             .replace(SPACE_BEFORE_CLOSER_REGEX, "$1")
             .replace(SPACE_AFTER_OPENER_REGEX, "$1")
+            .replace(CJK_BEFORE_LATIN_NUMBER_REGEX, "$1 $2")
+            .replace(LATIN_NUMBER_BEFORE_CJK_REGEX, "$1 $2")
             .replace(ZERO_WIDTH_REGEX, "")
             .replace(WHITESPACE_REGEX, " ")
             .trim()
         return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
+    }
+
+    private fun normalizeHalfWidthPunctuation(text: String): String = buildString(text.length) {
+        text.forEach { character -> append(HALF_WIDTH_PUNCTUATION[character] ?: character) }
     }
 
     private fun flushSentence(
@@ -158,6 +167,15 @@ class TtsTextProcessor {
         val CLOSING_QUOTES = setOf('”', '’', '」', '』', '】', '》', '）')
         val TRAILING_CLOSERS = CLOSING_QUOTES + setOf('"', 39.toChar())
         val HARD_TERMINATORS = setOf('。', '！', '？', '!', '?')
+        val HALF_WIDTH_PUNCTUATION = mapOf(
+            ',' to '，',
+            ';' to '；',
+            ':' to '：',
+            '?' to '？',
+            '!' to '！',
+            '(' to '（',
+            ')' to '）',
+        )
         val QUOTE_CONTINUATION_PREFIXES = setOf("然后", "接着", "随后", "并", "却", "又", "才", "说道", "说", "问道", "问", "答道", "答", "喊道", "喊", "叫道", "叫", "道")
 
         val HTML_TAG_REGEX = Regex("""<[^>]+>""")
@@ -170,6 +188,8 @@ class TtsTextProcessor {
         val REPEATED_SEPARATOR_REGEX = Regex("""[，,、；;：:]{2,}""")
         val SPACE_BEFORE_CLOSER_REGEX = Regex("""\s+([”"’'」』】》）])""")
         val SPACE_AFTER_OPENER_REGEX = Regex("""([“"‘'「『【《（])\s+""")
+        val CJK_BEFORE_LATIN_NUMBER_REGEX = Regex("""([\u3400-\u9FFF\uF900-\uFAFF])([A-Za-z0-9])""")
+        val LATIN_NUMBER_BEFORE_CJK_REGEX = Regex("""([A-Za-z0-9])([\u3400-\u9FFF\uF900-\uFAFF])""")
         val ZERO_WIDTH_REGEX = Regex("""[\u200B-\u200D\uFEFF]""")
         val WHITESPACE_REGEX = Regex("""\s+""")
         val SOFT_BREAK_REGEX = Regex("""[，,、；;：:]|\s+""")

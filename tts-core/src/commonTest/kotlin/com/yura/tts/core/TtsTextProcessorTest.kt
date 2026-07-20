@@ -40,7 +40,7 @@ class TtsTextProcessorTest {
     fun splitsChineseAndEnglishSentences() {
         val sentences = processor.splitSentences("第一句。第二句！Third sentence. Final question?")
 
-        assertEquals(listOf("第一句。", "第二句！", "Third sentence.", "Final question?"), sentences)
+        assertEquals(listOf("第一句。", "第二句！", "Third sentence.", "Final question？"), sentences)
     }
 
     @Test
@@ -101,4 +101,53 @@ class TtsTextProcessorTest {
         assertTrue(chunks.all { it.isNotEmpty() && it.length <= 160 })
         assertEquals(text, chunks.joinToString(separator = ""))
     }
+
+    @Test
+    fun normalizesDatesAndTimesForSpeech() {
+        assertEquals(
+            "会议在二零二六年七月二十日，下午十点三十四分开始。",
+            processor.clean("会议在2026-07-20,下午10:34开始。"),
+        )
+        assertEquals("凌晨零点整开始。", processor.clean("凌晨00:00开始。"))
+        assertEquals("倒计时十二点三十分四十五秒。", processor.clean("倒计时12:30:45。"))
+    }
+
+    @Test
+    fun normalizesPercentagesCurrenciesAndThousands() {
+        assertEquals(
+            "价格是一千二百三十四点五六美元，增长百分之五十点五。",
+            processor.clean("价格是\u00241,234.56,增长50.5%。"),
+        )
+        assertEquals("余额一万零一元。", processor.clean("余额￥10,001。"))
+        assertEquals("人数 1234567 人。", processor.clean("人数1,234,567人。"))
+    }
+
+    @Test
+    fun leavesInvalidDatesAndTimesUnlocalized() {
+        assertEquals(
+            "时间 99：99，日期 2026-02-30。",
+            processor.clean("时间99:99,日期2026-02-30。"),
+        )
+    }
+
+    @Test
+    fun insertsSpacesBetweenCjkAndLatinOrNumbers() {
+        assertEquals("使用 Kotlin 写代码 50 次。", processor.clean("使用Kotlin写代码50次。"))
+    }
+
+    @Test
+    fun convertsHalfWidthPunctuationGlobally() {
+        assertEquals(
+            "Hello， world！ （test）： ok？",
+            processor.clean("Hello, world! (test): ok?"),
+        )
+    }
+
+    @Test
+    fun normalizationIsIdempotent() {
+        val once = processor.clean("会议在2026-07-20,价格\u00241,234.56,增长50%。")
+
+        assertEquals(once, processor.clean(once))
+    }
+
 }
