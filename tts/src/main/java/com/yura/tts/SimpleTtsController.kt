@@ -94,6 +94,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var currentSentenceIndex = -1
     private var synthesizingIndex = -1
     private var pendingPrefetchPlaybackIndex = -1
+    private var lastStartedPlaybackRequest: TtsRequestIdentity? = null
     private var sessionId = 0L
     private var chapterPosition = -1
     private var stopping = false
@@ -821,10 +822,20 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
 
         val item = speechItems.getOrNull(sentenceIndex) ?: return
+        val request = requestIdentity(item)
+        if (!isCurrentRequest(request, currentSentenceIndex) ||
+            !TtsPlaybackPolicy.shouldStartPlayback(request, lastStartedPlaybackRequest, currentSentenceIndex)
+        ) {
+            Log.d(TAG, "playSynthesizedFile ignored duplicate or stale request=$request current=$currentSentenceIndex")
+            return
+        }
+        lastStartedPlaybackRequest = request
+        synthesizingIndex = -1
+        pendingPrefetchPlaybackIndex = -1
         currentSentenceIndex = sentenceIndex
         player.setMediaItem(
             MediaItem.Builder()
-                .setMediaId(TtsRequestId.media(requestIdentity(item)))
+                .setMediaId(TtsRequestId.media(request))
                 .setUri(Uri.fromFile(file))
                 .setMediaMetadata(
                     MediaMetadata.Builder().apply {

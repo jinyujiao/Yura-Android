@@ -648,9 +648,20 @@ class ReaderActivity : FragmentActivity() {
                     }
                     return best;
                 }
-                var nodes = Array.prototype.slice.call(
-                    document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote')
-                );
+                var readableSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
+                function readableText(element) {
+                    var descendants = element.querySelectorAll(readableSelector);
+                    if (descendants.length === 0) {
+                        return cleanTtsText(element.readiumOriginalParagraphText || element.innerText);
+                    }
+                    var clone = element.cloneNode(true);
+                    var cloneDescendants = clone.querySelectorAll(readableSelector);
+                    for (var j = cloneDescendants.length - 1; j >= 0; j--) {
+                        cloneDescendants[j].remove();
+                    }
+                    return cleanTtsText(clone.innerText || clone.textContent);
+                }
+                var nodes = Array.prototype.slice.call(document.querySelectorAll(readableSelector));
                 var readable = [];
                 var firstVisible = 0;
                 var foundVisible = false;
@@ -663,7 +674,7 @@ class ReaderActivity : FragmentActivity() {
                 for (var i = 0; i < nodes.length; i++) {
                     var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
                     if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
-                    var text = cleanTtsText(nodes[i].readiumOriginalParagraphText || nodes[i].innerText);
+                    var text = readableText(nodes[i]);
                     if (!text || text.length < 2) continue;
                     var textNodes = fragmentId === null
                         ? [nodes[i]]
@@ -847,9 +858,20 @@ class ReaderActivity : FragmentActivity() {
                         .trim();
                     return /[0-9A-Za-z\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(cleaned) ? cleaned : '';
                 }
-                var nodes = Array.prototype.slice.call(
-                    document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote')
-                );
+                var readableSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
+                function readableText(element) {
+                    var descendants = element.querySelectorAll(readableSelector);
+                    if (descendants.length === 0) {
+                        return cleanTtsText(element.readiumOriginalParagraphText || element.innerText);
+                    }
+                    var clone = element.cloneNode(true);
+                    var cloneDescendants = clone.querySelectorAll(readableSelector);
+                    for (var j = cloneDescendants.length - 1; j >= 0; j--) {
+                        cloneDescendants[j].remove();
+                    }
+                    return cleanTtsText(clone.innerText || clone.textContent);
+                }
+                var nodes = Array.prototype.slice.call(document.querySelectorAll(readableSelector));
                 var readableIndex = 0;
                 for (var i = 0; i < nodes.length; i++) {
                     nodes[i].removeAttribute('data-tts-readable-idx');
@@ -857,7 +879,7 @@ class ReaderActivity : FragmentActivity() {
                 for (var i = 0; i < nodes.length; i++) {
                     var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
                     if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
-                    var text = cleanTtsText(nodes[i].readiumOriginalParagraphText || nodes[i].innerText);
+                    var text = readableText(nodes[i]);
                     if (!text || text.length < 2) continue;
                     var textNodes = fragmentId === null
                         ? [nodes[i]]

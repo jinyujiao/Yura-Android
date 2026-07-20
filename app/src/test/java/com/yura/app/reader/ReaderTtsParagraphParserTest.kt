@@ -23,4 +23,27 @@ class ReaderTtsParagraphParserTest {
 
         assertEquals(listOf("第一句。", "第二句！"), ReaderTtsParagraphParser.parse(html))
     }
+    @Test
+    fun nestedReadableContainersDoNotDuplicateChildParagraphs() {
+        val html = """
+            <html><body>
+              <blockquote><p>引用内容。</p></blockquote>
+              <ul><li><p>列表内容。</p></li></ul>
+            </body></html>
+        """.trimIndent()
+
+        assertEquals(listOf("引用内容。", "列表内容。"), ReaderTtsParagraphParser.parse(html))
+    }
+
+    @Test
+    fun nestedListsKeepOuterTextWithoutRepeatingInnerText() {
+        val html = """
+            <html><body>
+              <ul><li>外层内容<ul><li>内层内容</li></ul></li></ul>
+            </body></html>
+        """.trimIndent()
+
+        assertEquals(listOf("外层内容", "内层内容"), ReaderTtsParagraphParser.parse(html))
+    }
+
 }

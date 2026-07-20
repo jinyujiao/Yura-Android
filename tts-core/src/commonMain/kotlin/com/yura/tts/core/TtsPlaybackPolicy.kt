@@ -11,4 +11,11 @@ object TtsPlaybackPolicy {
         return currentQueueSequence.takeIf { it in 0 until queueSize }
             ?: stateQueueSequence.takeIf { it in 0 until queueSize }
     }
+
+    fun shouldStartPlayback(
+        request: TtsRequestIdentity,
+        lastStartedRequest: TtsRequestIdentity?,
+        currentQueueSequence: Int,
+    ): Boolean = request.queueSequence == currentQueueSequence && request != lastStartedRequest
+
 }

@@ -10,6 +10,7 @@ Yura 的重要变更记录。后续发布条目由 `release.ps1` 根据上一个
 - Raise minimum Android API to 30
 - Harden TTS sentence splitting
 - Normalize spoken numbers and punctuation
+- Prevent duplicate TTS paragraph playback
 
 ## [1.1.1] - 2026-07-19
 
