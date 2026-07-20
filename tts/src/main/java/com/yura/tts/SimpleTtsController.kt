@@ -150,7 +150,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (stopping || currentSentenceIndex < 0) return
-                    if (activePlayerSentenceIndex() != currentSentenceIndex) return
                     _state.update {
                         it.copy(
                             state = if (isPlaying) TtsState.PLAYING else TtsState.PAUSED,
@@ -162,7 +161,6 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
                 override fun onPlayerError(error: PlaybackException) {
                     if (currentSentenceIndex < 0 || stopping) return
-                    if (activePlayerSentenceIndex() != currentSentenceIndex) return
                     fail("Audio stream failed: ${error.errorCodeName}.")
                 }
             }
