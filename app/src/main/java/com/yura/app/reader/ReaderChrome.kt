@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -152,7 +151,7 @@ fun LoadingReader() {
 }
 
 @Composable
-fun ErrorReader(message: String, onBack: () -> Unit, backLabel: String = "返回书架") {
+fun ErrorReader(message: String, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -161,14 +160,14 @@ fun ErrorReader(message: String, onBack: () -> Unit, backLabel: String = "返回
         ) {
             Text(message, textAlign = TextAlign.Center)
             Button(onClick = onBack) {
-                Text(backLabel)
+                Text("\u8fd4\u56de\u4e66\u67b6")
             }
         }
     }
 }
 
 @Composable
-fun ReaderTopBar(title: String, onBack: () -> Unit, backLabel: String = "返回书架") {
+fun ReaderTopBar(title: String, onBack: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -183,11 +182,7 @@ fun ReaderTopBar(title: String, onBack: () -> Unit, backLabel: String = "返回�
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) {
-                Icon(YuraIcons.Back, contentDescription = backLabel, tint = MaterialTheme.colorScheme.onSurface)
-                if (backLabel == "返回预览") {
-                    Spacer(Modifier.width(4.dp))
-                    Text(backLabel)
-                }
+                Icon(YuraIcons.Back, contentDescription = "返回书架", tint = MaterialTheme.colorScheme.onSurface)
             }
             Text(
                 text = title,
