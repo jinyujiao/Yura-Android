@@ -67,6 +67,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private val mimoTextProfile = MimoTtsTextProfile(textProcessor)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    private val prefetchExecutor = Executors.newFixedThreadPool(PREFETCH_AHEAD_COUNT)
     private val audioCache = TtsAudioCache(appContext)
     private val preferencesStore = TtsPreferencesStore(appContext)
     private val cloudTtsClient = CloudTtsClient()
@@ -474,6 +475,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         )
         testPlayback = false
         userPaused = false
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         sessionId++
         this.chapterPosition = chapterPosition
         stopping = false
@@ -581,6 +583,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun pause() {
         userPaused = true
+        wakeLockManager.release()
         tts.stop()
         player.pause()
         synthesizingIndex = -1
@@ -641,6 +644,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         stop()
         sleepTimer.cancel()
         executor.shutdownNow()
+        prefetchExecutor.shutdownNow()
         releaseMediaControls()
         player.release()
         tts.shutdown()
@@ -723,6 +727,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
 
         val safeIndex = sentenceIndex.coerceIn(0, speechItems.lastIndex)
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         sessionId++
         userPaused = false
         stopping = false
@@ -922,7 +927,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         player.prepare()
         player.play()
         markSentencePlaying(sentenceIndex, durationMs = audioCache.durationMs(file))
-        wakeLockManager.release()
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         prefetchCloudSentences(sentenceIndex + 1)
     }
 
@@ -947,7 +952,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         val request = requestIdentity(item)
         prefetchingIndices += sentenceIndex
         Log.d(TAG, "prefetch start index=$sentenceIndex textLength=${item.text.length} textHash=${item.text.hashCode()}")
-        executor.execute {
+        prefetchExecutor.execute {
             runCatching {
                 when (_state.value.provider) {
                     TtsProvider.MIMO -> synthesizeMimo(item.text, file)
@@ -1148,7 +1153,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
         private const val PREFETCH_AHEAD_COUNT = 2
-        private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 2 * 60 * 1000L
+        private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 10 * 60 * 1000L
         private const val TAG = "YuraTts"
     }
 }

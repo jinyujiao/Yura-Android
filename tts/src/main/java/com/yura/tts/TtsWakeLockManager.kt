@@ -16,8 +16,8 @@ internal class TtsWakeLockManager(context: Context) {
         }
         runCatching {
             if (lock.isHeld) lock.release()
-            lock.acquire(timeoutMs)
-            Log.d(TAG, "holdPlaybackWakeLock timeoutMs=$timeoutMs")
+            lock.acquire()
+            Log.d(TAG, "holdPlaybackWakeLock acquired until playback stops")
         }.onFailure { error ->
             Log.w(TAG, "holdPlaybackWakeLock failed: ${error.message}")
         }
