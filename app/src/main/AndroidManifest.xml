@@ -33,10 +33,12 @@
         </service>
         <activity
             android:name=".reader.ReaderActivity"
+            android:configChanges="uiMode"
             android:screenOrientation="@integer/activity_launch_orientation"
             tools:ignore="ManifestResource" />
         <activity
             android:name=".MainActivity"
+            android:configChanges="uiMode"
             android:screenOrientation="@integer/activity_launch_orientation"
             tools:ignore="ManifestResource"
             android:exported="true"
