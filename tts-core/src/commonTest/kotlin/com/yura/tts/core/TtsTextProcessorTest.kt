@@ -150,4 +150,43 @@ class TtsTextProcessorTest {
         assertEquals(once, processor.clean(once))
     }
 
+    @Test
+    fun keepsInitialismsNumberedAbbreviationsAndTechnicalVersionsTogether() {
+        assertEquals(
+            listOf("The U.S.A. team uses API v1.2.3.", "No. 5 passed.", "A Ph.D. student replied."),
+            processor.splitSentences("The U.S.A. team uses API v1.2.3. No. 5 passed. A Ph.D. student replied."),
+        )
+        assertEquals(
+            listOf("He moved to the U.S.A.", "Next sentence."),
+            processor.splitSentences("He moved to the U.S.A. Next sentence."),
+        )
+    }
+
+    @Test
+    fun handlesChineseEnglishMixedTextWithDomainsAndDialoguePunctuation() {
+        assertEquals(
+            listOf(
+                "版本 v1.2.3 已发布，API 地址是 api.example.com/v2。",
+                "He said\"更新完成！\"然后继续。",
+                "成功率百分之九十九点九。",
+            ),
+            processor.splitSentences(
+                "版本v1.2.3已发布,API地址是api.example.com/v2。He said \"更新完成!\"然后继续。成功率99.9%。",
+            ),
+        )
+    }
+
+    @Test
+    fun keepsEmailIpFileNamesAndDecimalMeasurementsInsideSentences() {
+        assertEquals(
+            listOf(
+                "联系 test.user@example.com。",
+                "服务器 192.168.1.10 正常。",
+                "打开 report.final.txt，误差 0.05mm。",
+            ),
+            processor.splitSentences(
+                "联系test.user@example.com。服务器192.168.1.10正常。打开report.final.txt,误差0.05mm。",
+            ),
+        )
+    }
 }

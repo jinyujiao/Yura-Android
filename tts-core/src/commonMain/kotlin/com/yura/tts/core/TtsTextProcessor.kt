@@ -274,10 +274,26 @@ class TtsTextProcessor {
         val next = text.getOrNull(index + 1)
         if (previous?.isDigit() == true && next?.isDigit() == true) return false
         if (previous?.isLetter() == true && next?.isLetter() == true) return false
-        if (ABBREVIATION_SUFFIX_REGEX.containsMatchIn(text.substring(0, index + 1))) return false
+        val prefix = text.substring(0, index + 1)
+        if (ABBREVIATION_SUFFIX_REGEX.containsMatchIn(prefix)) return false
+        if (INITIALISM_SUFFIX_REGEX.containsMatchIn(prefix) && hasFollowingSpeechText(text, index)) return false
         return true
     }
 
+    private fun hasFollowingSpeechText(text: String, periodIndex: Int): Boolean {
+        for (index in periodIndex + 1 until text.length) {
+            val character = text[index]
+            if (character.isWhitespace()) continue
+            return character.isLowerCase() ||
+                character.isDigit() ||
+                character.isCjk() ||
+                character in setOf(',', '，', ';', '；', ':', '：')
+        }
+        return false
+    }
+
+    private fun Char.isCjk(): Boolean =
+        this in '\u3400'..'\u9FFF' || this in '\uF900'..'\uFAFF'
     private fun splitLongChunk(text: String): List<String> = splitLongPrepared(clean(text))
 
     private fun splitLongSourceChunk(text: String): List<String> = splitLongPrepared(prepareSource(text))
@@ -353,8 +369,9 @@ class TtsTextProcessor {
         val SOFT_BREAK_REGEX = Regex("""[，,、；;：:]|\s+""")
         val QUOTE_ATTRIBUTION_REGEX = Regex("""^(?:他|她|他们|她们)(?:说|问|答|喊|叫|道)""")
         val ABBREVIATION_SUFFIX_REGEX = Regex(
-            """(?i)(?:\b(?:mr|mrs|ms|dr|st|vs|etc|prof|sr|jr)\.|\b(?:e\.g|i\.e)\.)$"""
+            """(?i)(?:\b(?:mr|mrs|ms|dr|st|vs|etc|prof|sr|jr|no|fig|vol|dept|inc|ltd|co)\.|\b(?:e\.g|i\.e|ph\.d)\.)$"""
         )
+        val INITIALISM_SUFFIX_REGEX = Regex("""(?i)(?:\b[A-Z]\.){2,}$""")
 
         val MARKDOWN_LINK_REGEX = Regex("""\[([^\]]+)]\((?:https?://|www\.)[^)]+\)""", RegexOption.IGNORE_CASE)
         val HTML_ENTITY_REGEX = Regex("""&([a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);""")
