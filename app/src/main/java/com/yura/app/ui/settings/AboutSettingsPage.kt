@@ -30,7 +30,7 @@ fun AboutSettingsPage(onOpenLicenses: () -> Unit) {
     ) {
         item {
             SettingsInfoCard(
-                "Yura ${BuildConfig.VERSION_NAME}\n一个专注 EPUB、TXT 阅读与自然朗读的本地优先阅读器。",
+                "Yura\n一个专注 EPUB、TXT 阅读与自然朗读的本地优先阅读器。",
             )
         }
         item {

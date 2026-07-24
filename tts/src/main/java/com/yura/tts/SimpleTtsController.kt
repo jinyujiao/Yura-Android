@@ -1270,7 +1270,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
-        private const val PREFETCH_AHEAD_COUNT = 2
+        private const val PREFETCH_AHEAD_COUNT = 6
         private const val PREFETCH_KEEP_ALIVE_MEDIA_PREFIX = "yura-tts-waiting:"
         private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 10 * 60 * 1000L
         private const val TAG = "YuraTts"
