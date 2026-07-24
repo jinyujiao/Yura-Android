@@ -6,7 +6,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import com.yura.app.reader.ReaderPreferencesStore
+import org.readium.r2.navigator.preferences.Theme
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF2A6658),
@@ -52,12 +58,40 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFF8E958C),
 )
 
+private val SepiaColors = lightColorScheme(
+    primary = Color(0xFF765A28),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFF3DFB3),
+    onPrimaryContainer = Color(0xFF281A03),
+    secondary = Color(0xFF6C5B3B),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFEEDDBB),
+    onSecondaryContainer = Color(0xFF241A09),
+    background = Color(0xFFF4ECD8),
+    onBackground = Color(0xFF282117),
+    surface = Color(0xFFFBF3DF),
+    onSurface = Color(0xFF282117),
+    surfaceVariant = Color(0xFFE9DEC7),
+    onSurfaceVariant = Color(0xFF50483A),
+    outline = Color(0xFF7D7465),
+)
 @Composable
-fun YuraTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit,
-) {
-    val colors: ColorScheme = if (darkTheme) DarkColors else LightColors
+fun YuraTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val selection by remember(context) {
+        ReaderPreferencesStore.themeSelection(context)
+    }.collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val resolvedTheme = if (selection.autoTheme) {
+        if (systemDark) Theme.DARK else Theme.LIGHT
+    } else {
+        selection.theme
+    }
+    val colors: ColorScheme = when (resolvedTheme) {
+        Theme.DARK -> DarkColors
+        Theme.SEPIA -> SepiaColors
+        else -> LightColors
+    }
     MaterialTheme(
         colorScheme = colors,
         typography = MaterialTheme.typography,

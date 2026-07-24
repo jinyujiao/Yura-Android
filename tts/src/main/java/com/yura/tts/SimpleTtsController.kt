@@ -16,9 +16,14 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.yura.tts.core.MicrosoftVoice
+import com.yura.tts.core.MicrosoftTtsTextProfile
+import com.yura.tts.core.MimoTtsTextProfile
+import com.yura.tts.core.SystemTtsTextProfile
+import com.yura.tts.core.TtsTextProfile
 import com.yura.tts.core.TtsDefaults
+import com.yura.tts.core.TtsPlaybackPolicy
 import com.yura.tts.core.TtsProvider
+import com.yura.tts.core.TtsRequestIdentity
 import com.yura.tts.core.TtsRequestId
 import com.yura.tts.core.TtsState
 import com.yura.tts.core.TtsTextProcessor
@@ -37,18 +42,31 @@ import kotlin.math.roundToLong
 
 class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
+    private data class SpeechSource(
+        val paragraphIndex: Int,
+        val sentenceIndexInParagraph: Int,
+        val sentenceGlobalIndex: Int,
+        val sourceText: String,
+        val fallbackText: String,
+    )
+
     private data class SpeechItem(
         val paragraphIndex: Int,
         val sentenceIndexInParagraph: Int,
         val sentenceGlobalIndex: Int,
         val text: String,
+        val textHash: String,
     )
 
     private val appContext = context.applicationContext
     private val locale = Locale.getDefault()
     private val textProcessor = TtsTextProcessor()
+    private val systemTextProfile = SystemTtsTextProfile(textProcessor)
+    private val microsoftTextProfile = MicrosoftTtsTextProfile(textProcessor)
+    private val mimoTextProfile = MimoTtsTextProfile(textProcessor)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    private val prefetchExecutor = Executors.newSingleThreadExecutor()
     private val audioCache = TtsAudioCache(appContext)
     private val preferencesStore = TtsPreferencesStore(appContext)
     private val cloudTtsClient = CloudTtsClient()
@@ -70,7 +88,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     val state: StateFlow<TtsUiState> = _state
 
     private lateinit var tts: TextToSpeech
-    private val player = ExoPlayer.Builder(appContext).build()
+    private val player = ExoPlayer.Builder(appContext)
+        .setWakeMode(C.WAKE_MODE_NETWORK)
+        .build()
     private val mediaSessionId = "yura-tts-${System.identityHashCode(this)}"
     private val mediaSessionManager = TtsMediaSessionManager(
         context = appContext,
@@ -80,10 +100,13 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         onNext = { mainHandler.post(::next) },
         onStop = { mainHandler.post(::stop) },
     )
+    private val sourceParagraphs = mutableListOf<String>()
     private val paragraphs = mutableListOf<String>()
+    private val speechSources = mutableListOf<SpeechSource>()
     private val speechItems = mutableListOf<SpeechItem>()
     private val prefetchingIndices = mutableSetOf<Int>()
     private val prefetchedIndices = mutableSetOf<Int>()
+    private val queuedPlayerSequences = mutableSetOf<Int>()
     private var initialized = false
     private var pendingParagraphIndex: Int? = null
     private var pendingSentenceIndex: Int? = null
@@ -91,8 +114,13 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var currentSentenceIndex = -1
     private var synthesizingIndex = -1
     private var pendingPrefetchPlaybackIndex = -1
-    private var generation = 0
+    private var lastStartedPlaybackRequest: TtsRequestIdentity? = null
+    private var lastHandledEndedRequest: TtsRequestIdentity? = null
+    private var finishedQueueSessionId: Long? = null
+    private var sessionId = 0L
+    private var chapterPosition = -1
     private var stopping = false
+    private var userPaused = false
     private var progressTickerRunning = false
     private var testPlayback = false
     private var mediaTitle = "Yura 朗读"
@@ -136,7 +164,14 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                             }
                         }
                         Player.STATE_ENDED -> {
-                            if (activePlayerSentenceIndex() == currentSentenceIndex) {
+                            val endedRequest = activePlayerRequest()
+                            if (endedRequest != null &&
+                                endedRequest.queueSequence == currentSentenceIndex &&
+                                !userPaused &&
+                                endedRequest != lastHandledEndedRequest
+                            ) {
+                                lastHandledEndedRequest = endedRequest
+                                Log.d(TAG, "player ended request=$endedRequest; advancing")
                                 playNextSentence()
                             }
                         }
@@ -144,15 +179,48 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                     }
                 }
 
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (stopping || mediaItem == null) return
+                    val request = TtsRequestId.parseMedia(mediaItem.mediaId)?.takeIf { isCurrentRequest(it) } ?: return
+                    if (request.queueSequence == currentSentenceIndex) return
+                    currentSentenceIndex = request.queueSequence
+                    lastStartedPlaybackRequest = request
+                    synthesizingIndex = -1
+                    pendingPrefetchPlaybackIndex = -1
+                    val file = audioCache.fileFor(request.sessionId, request.queueSequence)
+                    markSentencePlaying(request.queueSequence, durationMs = audioCache.durationMs(file))
+                    wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+                    prefetchCloudSentences(request.queueSequence + 1)
+                    appendPrefetchedAudioToPlayer()
+                    Log.d(TAG, "player transitioned request=$request reason=$reason")
+                }
+
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (stopping || currentSentenceIndex < 0) return
-                    _state.update {
-                        it.copy(
-                            state = if (isPlaying) TtsState.PLAYING else TtsState.PAUSED,
-                            errorMessage = null,
-                        )
+                    if (isPlaying) {
+                        userPaused = false
+                        if (isPrefetchKeepAlivePlaying()) {
+                            _state.update { it.copy(state = TtsState.LOADING, errorMessage = null) }
+                        } else {
+                            _state.update { it.copy(state = TtsState.PLAYING, errorMessage = null) }
+                            startProgressTicker()
+                        }
+                        return
                     }
-                    if (isPlaying) startProgressTicker()
+                    val playbackState = player.playbackState
+                    if (userPaused && playbackState == Player.STATE_READY) {
+                        _state.update { it.copy(state = TtsState.PAUSED, errorMessage = null) }
+                    } else if (playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE) {
+                        _state.update { it.copy(state = TtsState.LOADING, errorMessage = null) }
+                    }
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    Log.d(TAG, "player playWhenReady=$playWhenReady reason=$reason state=${player.playbackState} userPaused=$userPaused current=$currentSentenceIndex")
+                }
+
+                override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                    Log.d(TAG, "player suppression=$playbackSuppressionReason playWhenReady=${player.playWhenReady} state=${player.playbackState} current=$currentSentenceIndex")
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -187,23 +255,23 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 override fun onStart(utteranceId: String?) = Unit
 
                 override fun onDone(utteranceId: String?) {
-                    val request = TtsRequestId.parseCloud(utteranceId) ?: return
+                    val request = TtsRequestId.parseSystem(utteranceId) ?: return
                     mainHandler.post {
-                        if (request.first != generation || request.second != synthesizingIndex || stopping) {
+                        if (!isCurrentRequest(request, synthesizingIndex) || stopping) {
                             return@post
                         }
-                        audioCache.boostPcmWavVolume(audioCache.fileFor(generation, request.second))
-                        playSynthesizedFile(request.second)
+                        audioCache.boostPcmWavVolume(audioCache.fileFor(request.sessionId, request.queueSequence))
+                        playSynthesizedFile(request.queueSequence)
                     }
                 }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
-                    fail("\u7cfb\u7edf\u6717\u8bfb\u65e0\u6cd5\u64ad\u653e\u8fd9\u4e00\u53e5\u3002")
+                    handleSystemError(utteranceId, "\u7cfb\u7edf\u6717\u8bfb\u65e0\u6cd5\u64ad\u653e\u8fd9\u4e00\u53e5\u3002")
                 }
 
                 override fun onError(utteranceId: String?, errorCode: Int) {
-                    fail("\u7cfb\u7edf\u6717\u8bfb\u5931\u8d25\uff08$errorCode\uff09\u3002")
+                    handleSystemError(utteranceId, "\u7cfb\u7edf\u6717\u8bfb\u5931\u8d25\uff08$errorCode\uff09\u3002")
                 }
             }
         )
@@ -273,19 +341,31 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun selectProvider(provider: TtsProvider) {
         Log.d(TAG, "selectProvider provider=$provider")
-        val resumeSentence = currentSentenceIndex.takeIf { it >= 0 }
-            ?: _state.value.sentenceIndex.takeIf { it >= 0 }
-        val shouldResume = resumeSentence != null && speechItems.isNotEmpty() && _state.value.state != TtsState.IDLE
+        if (provider == _state.value.provider) return
+
+        val requestedResumeSentence = TtsPlaybackPolicy.providerSwitchResumeSequence(
+            currentQueueSequence = currentSentenceIndex,
+            stateQueueSequence = _state.value.sentenceIndex,
+            queueSize = speechItems.size,
+            state = _state.value.state,
+        )
         preferencesStore.setProvider(provider)
-        stop()
+        cancelPlaybackForProviderSwitch()
+        rebuildSpeechItems(provider)
+        val resumeSentence = requestedResumeSentence?.takeIf { it in speechItems.indices }
         _state.update {
             it.copy(
+                state = if (resumeSentence == null) TtsState.IDLE else TtsState.LOADING,
                 provider = provider,
+                sentenceTotal = speechItems.size,
+                currentSentence = resumeSentence?.let { index -> speechItems[index].text }.orEmpty(),
                 engineName = displayEngineName(provider),
                 errorMessage = null,
             )
         }
-        if (shouldResume) {
+
+        if (resumeSentence != null) {
+            currentSentenceIndex = resumeSentence
             pendingSentenceIndex = resumeSentence
             if (provider == TtsProvider.SYSTEM && !initialized) {
                 createSystemTts()
@@ -297,6 +377,24 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             createSystemTts()
         }
     }
+
+    private fun cancelPlaybackForProviderSwitch() {
+        sessionId++
+        stopping = true
+        tts.stop()
+        player.stop()
+        player.clearMediaItems()
+        stopping = false
+        pendingParagraphIndex = null
+        pendingSentenceIndex = null
+        synthesizingIndex = -1
+        pendingPrefetchPlaybackIndex = -1
+        queuedPlayerSequences.clear()
+        prefetchingIndices.clear()
+        prefetchedIndices.clear()
+        audioCache.clear()
+    }
+
     fun setMimoVoice(voice: String) {
         preferencesStore.setMimoVoice(voice)
         _state.update { it.copy(mimoVoice = voice, engineName = displayEngineName()) }
@@ -396,17 +494,18 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         mediaArtworkData = artworkData
     }
 
-    fun speak(items: List<String>, startParagraphIndex: Int = 0) {
-        speakInternal(items, startParagraphIndex, keepPlaybackSession = false)
+    fun speak(items: List<String>, startParagraphIndex: Int = 0, chapterPosition: Int = -1) {
+        speakInternal(items, startParagraphIndex, chapterPosition, keepPlaybackSession = false)
     }
 
-    fun speakContinuing(items: List<String>, startParagraphIndex: Int = 0) {
-        speakInternal(items, startParagraphIndex, keepPlaybackSession = true)
+    fun speakContinuing(items: List<String>, startParagraphIndex: Int = 0, chapterPosition: Int = -1) {
+        speakInternal(items, startParagraphIndex, chapterPosition, keepPlaybackSession = true)
     }
 
     private fun speakInternal(
         items: List<String>,
         startParagraphIndex: Int,
+        chapterPosition: Int,
         keepPlaybackSession: Boolean,
     ) {
         Log.d(
@@ -414,7 +513,12 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             "speak provider=${_state.value.provider} items=${items.size} start=$startParagraphIndex keepSession=$keepPlaybackSession initialized=$initialized"
         )
         testPlayback = false
-        generation++
+        userPaused = false
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+        sessionId++
+        lastHandledEndedRequest = null
+        finishedQueueSessionId = null
+        this.chapterPosition = chapterPosition
         stopping = false
         if (!keepPlaybackSession) {
             player.stop()
@@ -425,12 +529,11 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             ensureMediaControls()
         }
 
-        paragraphs.clear()
-        paragraphs.addAll(items.map { textProcessor.clean(it) }.filter { it.isNotBlank() })
+        replaceParagraphs(items)
+        queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
-        rebuildSpeechItems()
         Log.d(TAG, "speak split paragraphs=${paragraphs.size} speechItems=${speechItems.size}")
 
         val safeParagraph = startParagraphIndex.coerceIn(
@@ -469,9 +572,29 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun play() {
         if (speechItems.isEmpty()) return
+        userPaused = false
         if (_state.value.state == TtsState.PAUSED && player.playbackState != Player.STATE_IDLE) {
-            player.play()
-            _state.update { it.copy(state = TtsState.PLAYING, errorMessage = null) }
+            if (isPrefetchKeepAlivePlaying()) {
+                val sentenceIndex = currentSentenceIndex
+                val file = audioCache.fileFor(sessionId, sentenceIndex)
+                when {
+                    file.exists() && file.length() > 0L -> {
+                        prefetchedIndices.remove(sentenceIndex)
+                        playSynthesizedFile(sentenceIndex)
+                    }
+                    sentenceIndex in prefetchingIndices -> {
+                        pendingPrefetchPlaybackIndex = sentenceIndex
+                        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+                        player.play()
+                        _state.update { it.copy(state = TtsState.LOADING, errorMessage = null) }
+                    }
+                    else -> synthesizeSentence(sentenceIndex)
+                }
+            } else {
+                wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+                player.play()
+                _state.update { it.copy(state = TtsState.PLAYING, errorMessage = null) }
+            }
             return
         }
         val currentSentence = _state.value.sentenceIndex.coerceAtLeast(0)
@@ -481,28 +604,29 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     fun testVoice(text: String = "这是一段测试朗读，用来确认当前语音和音色。") {
         Log.d(TAG, "testVoice provider=${_state.value.provider} initialized=$initialized hasMimo=${_state.value.hasMimoApiKey} hasMs=${_state.value.hasMicrosoftApiKey}")
         testPlayback = true
-        generation++
+        userPaused = false
+        sessionId++
+        chapterPosition = -1
         stopping = false
         player.stop()
         tts.stop()
         audioCache.clear()
         ensureMediaControls()
 
-        paragraphs.clear()
-        paragraphs += textProcessor.clean(text)
+        replaceParagraphs(listOf(text))
+        queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
-        rebuildSpeechItems()
         _state.value = _state.value.copy(
             state = TtsState.LOADING,
             paragraphIndex = 0,
-            paragraphTotal = 1,
+            paragraphTotal = paragraphs.size,
             sentenceIndex = 0,
             sentenceTotal = speechItems.size,
             sentencePositionMs = 0,
             sentenceDurationMs = 0,
-            currentSentence = text,
-            currentParagraph = text,
+            currentSentence = speechItems.firstOrNull()?.text.orEmpty(),
+            currentParagraph = paragraphs.firstOrNull().orEmpty(),
             engineName = displayEngineName(),
             errorMessage = null,
         )
@@ -520,6 +644,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun pause() {
+        userPaused = true
+        wakeLockManager.release()
         tts.stop()
         player.pause()
         synthesizingIndex = -1
@@ -530,13 +656,15 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     fun stop() {
         Log.d(TAG, "stop")
+        userPaused = false
         wakeLockManager.release()
-        generation++
+        sessionId++
         pendingParagraphIndex = null
         pendingSentenceIndex = null
         activeParagraphIndex = -1
         currentSentenceIndex = -1
         synthesizingIndex = -1
+        queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         stopping = true
@@ -579,25 +707,66 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         stop()
         sleepTimer.cancel()
         executor.shutdownNow()
+        prefetchExecutor.shutdownNow()
         releaseMediaControls()
         player.release()
         tts.shutdown()
     }
 
-    private fun rebuildSpeechItems() {
-        speechItems.clear()
+    private fun replaceParagraphs(items: List<String>) {
+        sourceParagraphs.clear()
+        paragraphs.clear()
+        items.forEach { source ->
+            val displayText = textProcessor.clean(source)
+            if (displayText.isNotBlank()) {
+                sourceParagraphs += source
+                paragraphs += displayText
+            }
+        }
+        rebuildSpeechSources()
+        rebuildSpeechItems()
+    }
+
+    private fun rebuildSpeechSources() {
+        speechSources.clear()
         var globalIndex = 0
-        paragraphs.forEachIndexed { paragraphIndex, paragraph ->
-            textProcessor.splitSentences(textProcessor.clean(paragraph)).forEachIndexed { sentenceIndex, sentence ->
-                speechItems += SpeechItem(
+        sourceParagraphs.forEachIndexed { paragraphIndex, paragraph ->
+            var sentenceIndexInParagraph = 0
+            textProcessor.splitSourceSentences(paragraph).forEach { sourceSentence ->
+                val fallbackText = textProcessor.clean(sourceSentence)
+                if (fallbackText.isBlank()) return@forEach
+                speechSources += SpeechSource(
                     paragraphIndex = paragraphIndex,
-                    sentenceIndexInParagraph = sentenceIndex,
+                    sentenceIndexInParagraph = sentenceIndexInParagraph,
                     sentenceGlobalIndex = globalIndex,
-                    text = textProcessor.clean(sentence),
+                    sourceText = sourceSentence,
+                    fallbackText = fallbackText,
                 )
+                sentenceIndexInParagraph++
                 globalIndex++
             }
         }
+    }
+
+    private fun rebuildSpeechItems(provider: TtsProvider = _state.value.provider) {
+        val profile = textProfile(provider)
+        speechItems.clear()
+        speechSources.forEach { source ->
+            val preparedText = profile.prepare(source.sourceText).ifBlank { source.fallbackText }
+            speechItems += SpeechItem(
+                paragraphIndex = source.paragraphIndex,
+                sentenceIndexInParagraph = source.sentenceIndexInParagraph,
+                sentenceGlobalIndex = source.sentenceGlobalIndex,
+                text = preparedText,
+                textHash = TtsRequestId.textHash(preparedText),
+            )
+        }
+    }
+
+    private fun textProfile(provider: TtsProvider): TtsTextProfile = when (provider) {
+        TtsProvider.SYSTEM -> systemTextProfile
+        TtsProvider.MIMO -> mimoTextProfile
+        TtsProvider.MICROSOFT -> microsoftTextProfile
     }
 
     private fun ensureMediaControls() = mediaSessionManager.ensure()
@@ -621,13 +790,18 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
 
         val safeIndex = sentenceIndex.coerceIn(0, speechItems.lastIndex)
-        generation++
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+        sessionId++
+        lastHandledEndedRequest = null
+        finishedQueueSessionId = null
+        userPaused = false
         stopping = false
         if (resetPlayer) {
             tts.stop()
             player.stop()
             player.clearMediaItems()
         }
+        queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
@@ -643,12 +817,15 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             return
         }
         currentSentenceIndex = nextIndex
-        val file = audioCache.fileFor(generation, nextIndex)
+        val file = audioCache.fileFor(sessionId, nextIndex)
         if (nextIndex in prefetchingIndices) {
             Log.d(TAG, "playNextSentence waiting for prefetch index=$nextIndex")
             pendingPrefetchPlaybackIndex = nextIndex
             synthesizingIndex = nextIndex
-            speechItems.getOrNull(nextIndex)?.let { markSentenceLoading(it) }
+            speechItems.getOrNull(nextIndex)?.let { item ->
+                markSentenceLoading(item)
+                playPrefetchKeepAlive(item)
+            }
         } else if (file.exists() && file.length() > 0L) {
             Log.d(TAG, "playNextSentence prefetch hit index=$nextIndex file=${file.length()}")
             prefetchedIndices.remove(nextIndex)
@@ -660,6 +837,12 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun finishQueue() {
+        if (finishedQueueSessionId == sessionId) {
+            Log.d(TAG, "finishQueue ignored duplicate session=$sessionId")
+            return
+        }
+        finishedQueueSessionId = sessionId
+        Log.d(TAG, "finishQueue session=$sessionId items=${speechItems.size} current=$currentSentenceIndex")
         if (testPlayback) {
             testPlayback = false
             stop()
@@ -675,10 +858,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
 
     private fun synthesizeSentence(sentenceIndex: Int) {
         val item = speechItems.getOrNull(sentenceIndex) ?: return
-        Log.d(TAG, "synthesizeSentence index=$sentenceIndex provider=${_state.value.provider} textLength=${item.text.length} textHash=${item.text.hashCode()}")
+        Log.d(TAG, "synthesizeSentence request=${requestIdentity(item)} index=$sentenceIndex paragraph=${item.paragraphIndex} sentenceInParagraph=${item.sentenceIndexInParagraph} textLength=${item.text.length}")
         synthesizingIndex = sentenceIndex
         markSentenceLoading(item)
-        val file = audioCache.fileFor(generation, sentenceIndex)
+        val file = audioCache.fileFor(sessionId, sentenceIndex)
         if (file.exists()) file.delete()
 
         when (_state.value.provider) {
@@ -699,7 +882,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun synthesizeSystem(item: SpeechItem, file: File) {
-        val utteranceId = TtsRequestId.cloud(generation, item.sentenceGlobalIndex)
+        val utteranceId = TtsRequestId.system(requestIdentity(item))
         tts.setSpeechRate(preferencesStore.playbackSpeed())
         val result = tts.synthesizeToFile(item.text, Bundle(), file, utteranceId)
         Log.d(TAG, "synthesizeSystem utterance=$utteranceId result=$result textLength=${item.text.length} file=${file.absolutePath}")
@@ -713,14 +896,14 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         file: File,
         block: () -> Unit,
     ) {
-        val requestGeneration = generation
+        val request = requestIdentity(speechItems.getOrNull(sentenceIndex) ?: return)
         executor.execute {
             runCatching { block() }
                 .onSuccess {
                     audioCache.boostPcmWavVolume(file)
                     Log.d(TAG, "synthesizeCloud success sentence=$sentenceIndex file=${file.length()}")
                     mainHandler.post {
-                        if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping) {
+                        if (isCurrentRequest(request, synthesizingIndex) && !stopping) {
                             if (file.exists() && file.length() > 0L) {
                                 playSynthesizedFile(sentenceIndex)
                             } else {
@@ -732,7 +915,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 .onFailure { error ->
                     Log.e(TAG, "synthesizeCloud failed sentence=$sentenceIndex", error)
                     mainHandler.post {
-                        if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping) {
+                        if (isCurrentRequest(request, synthesizingIndex) && !stopping) {
                             file.delete()
                             _state.update { it.copy(errorMessage = "${_state.value.provider.label}正在重试…") }
                             executor.execute {
@@ -740,9 +923,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                                     .onSuccess {
                                         audioCache.boostPcmWavVolume(file)
                                         mainHandler.post {
-                                            if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping && file.exists() && file.length() > 0L) {
+                                            if (isCurrentRequest(request, synthesizingIndex) && !stopping && file.exists() && file.length() > 0L) {
                                                 playSynthesizedFile(sentenceIndex)
-                                            } else if (requestGeneration == generation && !stopping) {
+                                            } else if (isCurrentRequest(request) && !stopping) {
                                                 fail("${_state.value.provider.label}生成了空音频。")
                                             }
                                         }
@@ -750,7 +933,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                                     .onFailure { retryError ->
                                         Log.e(TAG, "synthesizeCloud retry failed sentence=$sentenceIndex", retryError)
                                         mainHandler.post {
-                                            if (requestGeneration == generation && sentenceIndex == synthesizingIndex && !stopping) {
+                                            if (isCurrentRequest(request, synthesizingIndex) && !stopping) {
                                                 fail(retryError.message ?: "云端朗读失败。")
                                             }
                                         }
@@ -774,43 +957,107 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         Log.d(TAG, "synthesizeMicrosoft voice=${preferencesStore.microsoftVoice()} region=$region textLength=${text.length} hasKey=${apiKey.isNotBlank()}")
         cloudTtsClient.synthesizeMicrosoft(text, apiKey, region, preferencesStore.microsoftVoice(), file)
     }
-    private fun activePlayerSentenceIndex(): Int? {
-        val request = TtsRequestId.parseCloud(player.currentMediaItem?.mediaId) ?: return null
-        return request.second.takeIf { request.first == generation }
+    private fun activePlayerRequest(): TtsRequestIdentity? {
+        val request = TtsRequestId.parseMedia(player.currentMediaItem?.mediaId) ?: return null
+        return request.takeIf { isCurrentRequest(it) }
     }
+
+    private fun activePlayerSentenceIndex(): Int? = activePlayerRequest()?.queueSequence
+
+    private fun isPrefetchKeepAlivePlaying(): Boolean =
+        player.currentMediaItem?.mediaId?.startsWith(PREFETCH_KEEP_ALIVE_MEDIA_PREFIX) == true
+
+    private fun playPrefetchKeepAlive(item: SpeechItem) {
+        val file = audioCache.waitingAudioFile()
+        queuedPlayerSequences.clear()
+        player.repeatMode = Player.REPEAT_MODE_ONE
+        player.setMediaItem(
+            MediaItem.Builder()
+                .setMediaId("$PREFETCH_KEEP_ALIVE_MEDIA_PREFIX$sessionId:${item.sentenceGlobalIndex}")
+                .setUri(Uri.fromFile(file))
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(mediaTitle)
+                        .setArtist(mediaSubtitle.ifBlank { displayEngineName() })
+                        .setDescription(item.text)
+                        .build()
+                )
+                .build()
+        )
+        player.prepare()
+        player.play()
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
+        Log.d(TAG, "prefetch keep-alive started index=${item.sentenceGlobalIndex}")
+    }
+
     private fun playSynthesizedFile(sentenceIndex: Int) {
-        val file = audioCache.fileFor(generation, sentenceIndex)
-        Log.d(TAG, "playSynthesizedFile index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
+        val file = audioCache.fileFor(sessionId, sentenceIndex)
+        Log.d(TAG, "playSynthesizedFile request=${speechItems.getOrNull(sentenceIndex)?.let(::requestIdentity)} index=$sentenceIndex exists=${file.exists()} length=${file.length()}")
         if (!file.exists() || file.length() == 0L) {
             fail("${_state.value.provider.label}\u751f\u6210\u4e86\u7a7a\u97f3\u9891\u3002")
             return
         }
 
-        val item = speechItems.getOrNull(sentenceIndex)
+        val item = speechItems.getOrNull(sentenceIndex) ?: return
+        val request = requestIdentity(item)
+        if (!isCurrentRequest(request, currentSentenceIndex) ||
+            !TtsPlaybackPolicy.shouldStartPlayback(request, lastStartedPlaybackRequest, currentSentenceIndex)
+        ) {
+            Log.d(TAG, "playSynthesizedFile ignored duplicate or stale request=$request current=$currentSentenceIndex")
+            return
+        }
+        lastStartedPlaybackRequest = request
+        synthesizingIndex = -1
+        pendingPrefetchPlaybackIndex = -1
         currentSentenceIndex = sentenceIndex
-        player.setMediaItem(
-            MediaItem.Builder()
-                .setMediaId(TtsRequestId.cloud(generation, sentenceIndex))
-                .setUri(Uri.fromFile(file))
-                .setMediaMetadata(
-                    MediaMetadata.Builder().apply {
-                        setTitle(mediaTitle)
-                        setArtist(mediaSubtitle.ifBlank { displayEngineName() })
-                        setDescription(item?.text.orEmpty())
-                        mediaArtworkData?.let {
-                            setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                        }
-                        mediaArtworkUri?.let { setArtworkUri(it) }
-                    }.build()
-                )
-                .build()
-        )
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        queuedPlayerSequences.clear()
+        queuedPlayerSequences += sentenceIndex
+        player.setMediaItem(createMediaItem(item, request, file))
         player.playbackParameters = PlaybackParameters(preferencesStore.playbackSpeed())
         player.prepare()
         player.play()
         markSentencePlaying(sentenceIndex, durationMs = audioCache.durationMs(file))
-        wakeLockManager.release()
+        wakeLockManager.acquire(BACKGROUND_CONTINUATION_WAKE_LOCK_MS)
         prefetchCloudSentences(sentenceIndex + 1)
+        appendPrefetchedAudioToPlayer()
+    }
+
+    private fun createMediaItem(item: SpeechItem, request: TtsRequestIdentity, file: File): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(TtsRequestId.media(request))
+            .setUri(Uri.fromFile(file))
+            .setMediaMetadata(
+                MediaMetadata.Builder().apply {
+                    setTitle(mediaTitle)
+                    setArtist(mediaSubtitle.ifBlank { displayEngineName() })
+                    setDescription(item.text)
+                    mediaArtworkData?.let {
+                        setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                    }
+                    mediaArtworkUri?.let { setArtworkUri(it) }
+                }.build()
+            )
+            .build()
+
+    private fun appendPrefetchedAudioToPlayer() {
+        if (stopping || isPrefetchKeepAlivePlaying() || player.mediaItemCount == 0) return
+        var sentenceIndex = (queuedPlayerSequences.maxOrNull() ?: currentSentenceIndex) + 1
+        while (sentenceIndex in speechItems.indices) {
+            if (sentenceIndex in queuedPlayerSequences) {
+                sentenceIndex++
+                continue
+            }
+            val file = audioCache.fileFor(sessionId, sentenceIndex)
+            if (sentenceIndex !in prefetchedIndices || !file.exists() || file.length() == 0L) return
+            val item = speechItems[sentenceIndex]
+            val request = requestIdentity(item)
+            player.addMediaItem(createMediaItem(item, request, file))
+            queuedPlayerSequences += sentenceIndex
+            prefetchedIndices.remove(sentenceIndex)
+            Log.d(TAG, "playlist append request=$request items=${player.mediaItemCount}")
+            sentenceIndex++
+        }
     }
 
     private fun prefetchCloudSentences(startSentenceIndex: Int) {
@@ -823,7 +1070,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         if (testPlayback || stopping) return
         if (_state.value.provider == TtsProvider.SYSTEM) return
         val item = speechItems.getOrNull(sentenceIndex) ?: return
-        val file = audioCache.fileFor(generation, sentenceIndex)
+        val file = audioCache.fileFor(sessionId, sentenceIndex)
         if (file.exists() && file.length() > 0L) {
             Log.d(TAG, "prefetch already cached index=$sentenceIndex file=${file.length()}")
             prefetchedIndices += sentenceIndex
@@ -831,10 +1078,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         }
         if (sentenceIndex in prefetchingIndices || sentenceIndex in prefetchedIndices) return
 
-        val requestGeneration = generation
+        val request = requestIdentity(item)
         prefetchingIndices += sentenceIndex
         Log.d(TAG, "prefetch start index=$sentenceIndex textLength=${item.text.length} textHash=${item.text.hashCode()}")
-        executor.execute {
+        prefetchExecutor.execute {
             runCatching {
                 when (_state.value.provider) {
                     TtsProvider.MIMO -> synthesizeMimo(item.text, file)
@@ -844,25 +1091,31 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
                 audioCache.boostPcmWavVolume(file)
             }.onSuccess {
                 mainHandler.post {
+                    if (!isCurrentRequest(request)) return@post
                     prefetchingIndices.remove(sentenceIndex)
-                    if (requestGeneration == generation && !stopping && file.exists() && file.length() > 0L) {
+                    if (!stopping && file.exists() && file.length() > 0L) {
                         Log.d(TAG, "prefetch success index=$sentenceIndex file=${file.length()}")
                         prefetchedIndices += sentenceIndex
                         if (pendingPrefetchPlaybackIndex == sentenceIndex) {
                             pendingPrefetchPlaybackIndex = -1
-                            prefetchedIndices.remove(sentenceIndex)
-                            playSynthesizedFile(sentenceIndex)
+                            if (!userPaused) {
+                                prefetchedIndices.remove(sentenceIndex)
+                                playSynthesizedFile(sentenceIndex)
+                            }
+                        } else {
+                            appendPrefetchedAudioToPlayer()
                         }
                     }
                 }
             }.onFailure { error ->
                 Log.e(TAG, "prefetch failed index=$sentenceIndex", error)
                 mainHandler.post {
+                    if (!isCurrentRequest(request)) return@post
                     prefetchingIndices.remove(sentenceIndex)
                     file.delete()
-                    if (pendingPrefetchPlaybackIndex == sentenceIndex && requestGeneration == generation && !stopping) {
+                    if (pendingPrefetchPlaybackIndex == sentenceIndex && !stopping) {
                         pendingPrefetchPlaybackIndex = -1
-                        synthesizeSentence(sentenceIndex)
+                        if (!userPaused) synthesizeSentence(sentenceIndex)
                     }
                 }
             }
@@ -941,30 +1194,56 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private fun canStartCurrentProvider(): Boolean =
         _state.value.provider != TtsProvider.SYSTEM || initialized
 
-    private fun fail(message: String) {
-        Log.e(TAG, "fail: $message")
-        if (_state.value.provider != TtsProvider.SYSTEM && speechItems.isNotEmpty()) {
-            mainHandler.post {
-                wakeLockManager.release()
-                player.stop()
-                _state.update { it.copy(state = TtsState.ERROR, errorMessage = message, engineName = displayEngineName()) }
-            }
-            return
-        }
+    private fun requestIdentity(item: SpeechItem): TtsRequestIdentity = TtsRequestIdentity(
+        sessionId = sessionId,
+        queueSequence = item.sentenceGlobalIndex,
+        chapterPosition = chapterPosition,
+        textHash = item.textHash,
+    )
+
+    private fun isCurrentRequest(request: TtsRequestIdentity, expectedQueueSequence: Int? = null): Boolean {
+        val item = speechItems.getOrNull(request.queueSequence) ?: return false
+        return request.sessionId == sessionId &&
+            request.chapterPosition == chapterPosition &&
+            request.textHash == item.textHash &&
+            (expectedQueueSequence == null || request.queueSequence == expectedQueueSequence)
+    }
+
+    private fun handleSystemError(utteranceId: String?, message: String) {
+        val request = TtsRequestId.parseSystem(utteranceId) ?: return
         mainHandler.post {
+            if (isCurrentRequest(request, synthesizingIndex) && !stopping) {
+                fail(message)
+            }
+        }
+    }
+
+    private fun fail(message: String) {
+        val failedSessionId = sessionId
+        val failedProvider = _state.value.provider
+        Log.e(TAG, "fail provider=$failedProvider retained=true message=$message")
+        mainHandler.post {
+            if (failedSessionId != sessionId) return@post
+            sessionId++
             wakeLockManager.release()
+            stopping = true
             tts.stop()
             player.stop()
+            player.clearMediaItems()
+            stopping = false
             pendingParagraphIndex = null
             pendingSentenceIndex = null
-            activeParagraphIndex = -1
             synthesizingIndex = -1
-            onParagraphChanged?.invoke(-1)
+            pendingPrefetchPlaybackIndex = -1
+            queuedPlayerSequences.clear()
+            prefetchingIndices.clear()
+            prefetchedIndices.clear()
             _state.update {
                 it.copy(
                     state = TtsState.ERROR,
+                    provider = failedProvider,
                     errorMessage = message,
-                    engineName = displayEngineName(),
+                    engineName = displayEngineName(failedProvider),
                 )
             }
         }
@@ -981,34 +1260,19 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             TtsProvider.MICROSOFT -> "Microsoft ${preferencesStore.microsoftVoice()}"
         }
 
-    private fun escapeXml(value: String): String =
-        value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
-
     companion object {
-        const val DEFAULT_MIMO_VOICE = "茉莉"
-        const val DEFAULT_MICROSOFT_VOICE = "zh-CN-XiaoxiaoNeural"
-        const val DEFAULT_PLAYBACK_SPEED = 1.0f
-        val MIMO_VOICES = listOf("冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
-        val MICROSOFT_VOICES = listOf(
-            MicrosoftVoice("zh-CN-XiaoxiaoNeural", "晓晓 · zh-CN", "zh-CN"),
-            MicrosoftVoice("zh-CN-YunxiNeural", "云希 · zh-CN", "zh-CN"),
-            MicrosoftVoice("zh-CN-XiaoyiNeural", "晓伊 · zh-CN", "zh-CN"),
-            MicrosoftVoice("zh-CN-YunjianNeural", "云健 · zh-CN", "zh-CN"),
-            MicrosoftVoice("zh-CN-XiaochenNeural", "晓辰 · zh-CN", "zh-CN"),
-            MicrosoftVoice("en-US-JennyNeural", "Jenny · en-US", "en-US"),
-            MicrosoftVoice("en-US-GuyNeural", "Guy · en-US", "en-US"),
-        )
-        val PLAYBACK_SPEEDS = listOf(0.8f, 1.0f, 1.2f, 1.4f, 1.6f, 1.8f, 2.0f)
+        const val DEFAULT_MIMO_VOICE = TtsDefaults.MIMO_VOICE
+        const val DEFAULT_MICROSOFT_VOICE = TtsDefaults.MICROSOFT_VOICE
+        const val DEFAULT_PLAYBACK_SPEED = TtsDefaults.PLAYBACK_SPEED
+        val MIMO_VOICES = TtsDefaults.MIMO_VOICES
+        val MICROSOFT_VOICES = TtsDefaults.MICROSOFT_VOICES
+        val PLAYBACK_SPEEDS = TtsDefaults.PLAYBACK_SPEEDS
 
         private const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
         private const val MIMO_MODEL = "mimo-v2.5-tts"
         private const val PREFETCH_AHEAD_COUNT = 2
-        private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 2 * 60 * 1000L
+        private const val PREFETCH_KEEP_ALIVE_MEDIA_PREFIX = "yura-tts-waiting:"
+        private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 10 * 60 * 1000L
         private const val TAG = "YuraTts"
     }
 }

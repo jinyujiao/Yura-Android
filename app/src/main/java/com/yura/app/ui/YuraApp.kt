@@ -67,7 +67,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,7 +104,7 @@ import com.yura.app.notes.NotesViewModel
 import com.yura.app.library.LibraryViewModel
 import com.yura.app.reader.ReaderActivity
 import com.yura.app.reader.ReaderPreferencesStore
-import com.yura.tts.SimpleTtsController
+import com.yura.tts.android.MediaService
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -153,7 +152,7 @@ fun YuraApp(
     val notesState by notesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val navigationHazeState = rememberHazeState()
-    val ttsController = remember { SimpleTtsController(context.applicationContext) }
+    val ttsController = remember { MediaService.controller(context.applicationContext) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
     var searchExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -217,9 +216,6 @@ fun YuraApp(
         searchQuery = ""
     }
 
-    DisposableEffect(Unit) {
-        onDispose { ttsController.shutdown() }
-    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -322,6 +318,7 @@ fun YuraApp(
                                 query = searchQuery,
                                 sort = shelfSort,
                                 onOpenReader = { book ->
+                                    ttsController.stop()
                                     context.startActivity(ReaderActivity.intent(context, book.id))
                                 },
                                 onRemoveFromDevice = { books -> books.forEach(libraryViewModel::removeLocalBook) },
@@ -340,6 +337,7 @@ fun YuraApp(
                                 onUpdateCorrection = notesViewModel::updateCorrection,
                                 onOpenAnnotation = { annotation ->
                                     annotation.locator?.let { locator ->
+                                        ttsController.stop()
                                         context.startActivity(ReaderActivity.previewIntent(context, annotation.bookId, locator))
                                     }
                                 },
