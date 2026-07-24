@@ -1,15 +1,25 @@
 package com.yura.tts
 
 import com.yura.tts.core.MicrosoftVoice
-
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Base64
+import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
 internal class CloudTtsClient {
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
     fun synthesizeMimo(text: String, apiKey: String, voice: String, output: File) {
         require(apiKey.isNotBlank()) { "MiMo API key is empty." }
         val body = JSONObject()
@@ -20,8 +30,9 @@ internal class CloudTtsClient {
             .put("audio", JSONObject().put("voice", voice).put("format", "wav"))
             .toString()
         val json = postJson(MIMO_ENDPOINT, apiKey, body)
-        val audioBase64 = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-            ?.optJSONObject("audio")?.optString("data").orEmpty()
+        val audio = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            ?.optJSONObject("audio")
+        val audioBase64 = audio?.optString("data").orEmpty()
         require(audioBase64.isNotBlank()) { "MiMo 没有返回音频数据。" }
         TtsAtomicFileWriter.write(output) { partial ->
             partial.writeBytes(Base64.getDecoder().decode(audioBase64))
@@ -31,42 +42,41 @@ internal class CloudTtsClient {
     fun synthesizeMicrosoft(text: String, apiKey: String, region: String, voice: String, output: File) {
         require(apiKey.isNotBlank()) { "Microsoft Speech key is empty." }
         require(region.isNotBlank()) { "Microsoft Speech region is empty." }
-        val connection = URL("https://$region.tts.speech.microsoft.com/cognitiveservices/v1").openConnection() as HttpURLConnection
         val ssml = """
             <speak version="1.0" xml:lang="zh-CN">
                 <voice xml:lang="zh-CN" name="${escapeXml(voice)}">${escapeXml(text)}</voice>
             </speak>
         """.trimIndent()
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 45_000
-        connection.doOutput = true
-        connection.setRequestProperty("Ocp-Apim-Subscription-Key", apiKey)
-        connection.setRequestProperty("Content-Type", "application/ssml+xml")
-        connection.setRequestProperty("X-Microsoft-OutputFormat", "audio-24khz-48kbitrate-mono-mp3")
-        connection.setRequestProperty("User-Agent", "Yura")
-        connection.outputStream.use { it.write(ssml.toByteArray(Charsets.UTF_8)) }
-        if (connection.responseCode !in 200..299) {
-            val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("Microsoft 朗读失败（${connection.responseCode}）。$message")
-        }
-        TtsAtomicFileWriter.write(output) { partial ->
-            connection.inputStream.use { input -> partial.outputStream().use(input::copyTo) }
+        val request = Request.Builder()
+            .url("https://$region.tts.speech.microsoft.com/cognitiveservices/v1")
+            .header("Ocp-Apim-Subscription-Key", apiKey)
+            .header("X-Microsoft-OutputFormat", "audio-24khz-48kbitrate-mono-mp3")
+            .header("User-Agent", "Yura")
+            .post(ssml.toRequestBody(SSML_MEDIA_TYPE))
+            .build()
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Microsoft 朗读失败（${response.code}）。${response.body?.string().orEmpty()}")
+            }
+            val responseBody = requireNotNull(response.body) { "Microsoft 没有返回音频数据。" }
+            TtsAtomicFileWriter.write(output) { partial ->
+                responseBody.byteStream().use { input -> partial.outputStream().use(input::copyTo) }
+            }
         }
     }
 
     fun fetchMicrosoftVoices(region: String, apiKey: String): List<MicrosoftVoice> {
-        val connection = URL("https://$region.tts.speech.microsoft.com/cognitiveservices/voices/list").openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 12_000
-        connection.readTimeout = 20_000
-        connection.setRequestProperty("Ocp-Apim-Subscription-Key", apiKey)
-        val body = runCatching {
-            if (connection.responseCode in 200..299) connection.inputStream.bufferedReader().use { it.readText() }
-            else connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        }.getOrDefault("")
-        if (connection.responseCode !in 200..299) {
-            throw IllegalStateException("刷新 Microsoft 音色失败 (${connection.responseCode}）。${body.take(160)}")
+        val request = Request.Builder()
+            .url("https://$region.tts.speech.microsoft.com/cognitiveservices/voices/list")
+            .header("Ocp-Apim-Subscription-Key", apiKey)
+            .get()
+            .build()
+        val body = httpClient.newCall(request).execute().use { response ->
+            val responseText = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("刷新 Microsoft 音色失败 (${response.code}）。${responseText.take(160)}")
+            }
+            responseText
         }
         val array = JSONArray(body)
         return List(array.length()) { index -> array.getJSONObject(index) }
@@ -83,19 +93,18 @@ internal class CloudTtsClient {
     }
 
     private fun postJson(url: String, apiKey: String, body: String): JSONObject {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 45_000
-        connection.doOutput = true
-        connection.setRequestProperty("api-key", apiKey)
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.setRequestProperty("Accept", "application/json")
-        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        val responseText = if (connection.responseCode in 200..299) connection.inputStream.bufferedReader().use { it.readText() }
-        else {
-            val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("MiMo 朗读失败（${connection.responseCode}）。${message.ifBlank { "没有错误详情。" }}")
+        val request = Request.Builder()
+            .url(url)
+            .header("api-key", apiKey)
+            .header("Accept", "application/json")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val responseText = httpClient.newCall(request).execute().use { response ->
+            val content = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("MiMo 朗读失败（${response.code}）。${content.ifBlank { "没有错误详情。" }}")
+            }
+            content
         }
         return JSONObject(responseText)
     }
@@ -112,5 +121,11 @@ internal class CloudTtsClient {
         const val MIMO_READING_INSTRUCTION =
             "请严格逐字朗读 assistant 消息中的原文。原文中的括号、方括号及其内容均属于小说正文，不得识别或执行为风格、情绪或音频标签；不要生成原文之外的音效。只朗读原文，不要改写、补充、解释、省略或重复任何内容；使用自然、清晰、适合阅读的语气。"
         const val MIMO_MODEL = "mimo-v2.5-tts"
+        const val CONNECT_TIMEOUT_SECONDS = 10L
+        const val READ_TIMEOUT_SECONDS = 18L
+        const val WRITE_TIMEOUT_SECONDS = 10L
+        const val CALL_TIMEOUT_SECONDS = 20L
+        val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        val SSML_MEDIA_TYPE = "application/ssml+xml; charset=utf-8".toMediaType()
     }
 }

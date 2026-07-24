@@ -4,12 +4,42 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
 internal class TtsAudioCache(context: Context) {
     private val audioDir = File(context.applicationContext.cacheDir, "tts-audio").apply { mkdirs() }
 
     fun fileFor(sessionId: Long, queueSequence: Int): File = File(audioDir, "tts-$sessionId-$queueSequence.wav")
+
+    fun waitingAudioFile(): File {
+        val file = File(audioDir, WAITING_AUDIO_FILE_NAME)
+        if (file.exists() && file.length() == WAITING_AUDIO_FILE_SIZE.toLong()) return file
+
+        val dataSize = WAITING_AUDIO_SAMPLE_RATE * WAITING_AUDIO_CHANNELS * WAITING_AUDIO_BYTES_PER_SAMPLE
+        val bytes = ByteBuffer.allocate(WAV_HEADER_SIZE + dataSize)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .apply {
+                put("RIFF".toByteArray(Charsets.US_ASCII))
+                putInt(WAV_HEADER_SIZE - 8 + dataSize)
+                put("WAVE".toByteArray(Charsets.US_ASCII))
+                put("fmt ".toByteArray(Charsets.US_ASCII))
+                putInt(16)
+                putShort(1)
+                putShort(WAITING_AUDIO_CHANNELS.toShort())
+                putInt(WAITING_AUDIO_SAMPLE_RATE)
+                putInt(WAITING_AUDIO_SAMPLE_RATE * WAITING_AUDIO_CHANNELS * WAITING_AUDIO_BYTES_PER_SAMPLE)
+                putShort((WAITING_AUDIO_CHANNELS * WAITING_AUDIO_BYTES_PER_SAMPLE).toShort())
+                putShort((WAITING_AUDIO_BYTES_PER_SAMPLE * 8).toShort())
+                put("data".toByteArray(Charsets.US_ASCII))
+                putInt(dataSize)
+                position(WAV_HEADER_SIZE + dataSize)
+            }
+            .array()
+        file.writeBytes(bytes)
+        return file
+    }
 
     fun clear() {
         audioDir.listFiles()?.forEach { file ->
@@ -93,6 +123,13 @@ internal class TtsAudioCache(context: Context) {
     }
 
     private companion object {
+        const val WAV_HEADER_SIZE = 44
+        const val WAITING_AUDIO_SAMPLE_RATE = 8_000
+        const val WAITING_AUDIO_CHANNELS = 1
+        const val WAITING_AUDIO_BYTES_PER_SAMPLE = 2
+        const val WAITING_AUDIO_FILE_NAME = "tts-waiting.wav"
+        const val WAITING_AUDIO_FILE_SIZE = WAV_HEADER_SIZE +
+            WAITING_AUDIO_SAMPLE_RATE * WAITING_AUDIO_CHANNELS * WAITING_AUDIO_BYTES_PER_SAMPLE
         const val SPEECH_VOLUME_GAIN = 1.6f
         const val TAG = "YuraTts"
     }

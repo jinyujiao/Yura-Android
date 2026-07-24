@@ -48,6 +48,22 @@ class ReaderTtsParagraphParserTest {
 
 
     @Test
+    fun skipsHiddenNavigationAndFootnoteContent() {
+        val html = """
+            <html><body>
+              <nav><p>目录内容</p></nav>
+              <p hidden>隐藏广告</p>
+              <p style="display: none">隐藏提示</p>
+              <aside epub:type="footnote"><p>脚注全文</p></aside>
+              <p>正文内容<a epub:type="noteref">1</a>。</p>
+              <footer><p>版权信息</p></footer>
+            </body></html>
+        """.trimIndent()
+
+        assertEquals(listOf("正文内容。"), ReaderTtsParagraphParser.parse(html))
+    }
+
+    @Test
     fun preservesProsodyForProviderSpecificCleaning() {
         val source = "“咿哈哈……等等？！——”"
 

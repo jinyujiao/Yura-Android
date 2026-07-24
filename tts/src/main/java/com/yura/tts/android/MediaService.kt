@@ -1,6 +1,7 @@
 package com.yura.tts.android
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.IBinder
@@ -15,9 +16,15 @@ import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.yura.tts.SimpleTtsController
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MediaService : MediaSessionService() {
+
+    override fun onCreate() {
+        super.onCreate()
+        controller(applicationContext)
+    }
 
     inner class Binder : android.os.Binder() {
         private var ttsMediaSession: MediaSession? = null
@@ -172,6 +179,16 @@ class MediaService : MediaSessionService() {
     }
 
     companion object {
+        @Volatile
+        private var sharedController: SimpleTtsController? = null
+
+        fun controller(context: Context): SimpleTtsController =
+            sharedController ?: synchronized(this) {
+                sharedController ?: SimpleTtsController(context.applicationContext).also {
+                    sharedController = it
+                }
+            }
+
         const val SERVICE_INTERFACE = "com.yura.tts.android.MediaService"
         private const val TTS_COMMAND_STOP = "com.yura.app.tts.STOP"
 

@@ -104,8 +104,9 @@ class TtsTextProcessor {
             .replace(REPLACEMENT_CHARACTER_REGEX, "")
             .replace(PRIVATE_USE_REGEX, "")
 
+        cleaned = removeMimoSquareBrackets(cleaned)
+            .replace(MIMO_CHECKMARK_REGEX, "")
         cleaned = stripEmoji(cleaned)
-        cleaned = neutralizeMimoTags(cleaned)
             .replace(MIMO_DECORATIVE_EDGE_REGEX, "")
             .replace(MIMO_DECORATIVE_AFTER_OPENER_REGEX, "$1")
             .replace(MIMO_DECORATIVE_BEFORE_CLOSER_REGEX, "$1")
@@ -169,17 +170,9 @@ class TtsTextProcessor {
         if (tagName in HTML_TAG_NAMES) " " else "【$content】"
     }
 
-    private fun neutralizeMimoTags(text: String): String = buildString(text.length) {
+    private fun removeMimoSquareBrackets(text: String): String = buildString(text.length) {
         text.forEach { character ->
-            append(
-                when (character) {
-                    '[', '［' -> '【'
-                    ']', '］' -> '】'
-                    '(', '（' -> '〔'
-                    ')', '）' -> '〕'
-                    else -> character
-                }
-            )
+            if (character !in MIMO_SQUARE_BRACKETS) append(character)
         }
     }
 
@@ -375,6 +368,8 @@ class TtsTextProcessor {
 
         val MARKDOWN_LINK_REGEX = Regex("""\[([^\]]+)]\((?:https?://|www\.)[^)]+\)""", RegexOption.IGNORE_CASE)
         val HTML_ENTITY_REGEX = Regex("""&([a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);""")
+        val MIMO_SQUARE_BRACKETS = setOf('[', ']', '［', '］', '【', '】', '〖', '〗', '〚', '〛')
+        val MIMO_CHECKMARK_REGEX = Regex("[√✓✔☑]+")
         val MIMO_DECORATIVE_REPEAT_REGEX = Regex("""[△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]{2,}""")
         val MIMO_SEPARATOR_REPEAT_REGEX = Regex("""[/\\|]{3,}""")
         val MIMO_DECORATIVE_EDGE_REGEX = Regex("""^[\s△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+|[\s△▲▼▽◆◇★☆●○◎■□※♬♪▶▷◀◁▌▍▎▏〓㊣]+$""")

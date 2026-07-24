@@ -29,14 +29,19 @@ class TtsTextProfileTest {
 
     @Test
     fun mimoNeutralizesControlTagsAndDecorativeSymbols() {
-        assertEquals("【系统提示：力量↑10】", mimo.prepare("[系统提示：力量↑10]"))
-        assertEquals("〔轻笑〕他说——", mimo.prepare("（轻笑）他说————"))
-        assertEquals("〔轻笑〕他说。", mimo.prepare("（ 轻笑 ）他说。"))
+        assertEquals("系统提示：力量↑10", mimo.prepare("[系统提示：力量↑10]"))
+        assertEquals("（轻笑）他说——", mimo.prepare("（轻笑）他说————"))
+        assertEquals("（轻笑）他说。", mimo.prepare("（ 轻笑 ）他说。"))
         assertEquals(
-            "【爆炸的火焰吞没塔吊，砸向追击者之间……】",
+            "爆炸的火焰吞没塔吊，砸向追击者之间……",
             mimo.prepare("【△爆炸的火焰吞没塔吊，砸向追击者之间......】"),
         )
         assertEquals("场景切换", mimo.prepare("◆◆◆ 场景切换 ◆◆◆"))
+        assertEquals("演员", mimo.prepare("【演员】√"))
+        assertEquals("演员，开场。", mimo.prepare("【演员】√，开场。"))
+        assertEquals("旁白", mimo.prepare("[旁白]✓"))
+        assertEquals("角色台词", mimo.prepare("［角色］【台词】"))
+        assertEquals("旁白正文", mimo.prepare("〖旁白〗〚正文〛"))
     }
 
     @Test
@@ -50,7 +55,7 @@ class TtsTextProfileTest {
     fun mimoDecodesEntitiesLinksAndPseudoTags() {
         assertEquals("他回来了&她也来了。", mimo.prepare("&nbsp;他回来了&amp;她也来了。"))
         assertEquals("角色设定", mimo.prepare("[角色设定](https://example.com/profile)"))
-        assertEquals("【系统提示】获得奖励。", mimo.prepare("<系统提示>获得奖励。"))
+        assertEquals("系统提示获得奖励。", mimo.prepare("<系统提示>获得奖励。"))
     }
 
     @Test

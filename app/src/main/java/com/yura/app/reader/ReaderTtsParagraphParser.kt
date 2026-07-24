@@ -6,11 +6,33 @@ import org.jsoup.nodes.Element
 internal object ReaderTtsParagraphParser {
     private const val READABLE_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote"
     private val readableTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote")
+    private val excludedEpubTypes = setOf("toc", "footnote", "endnote", "pagebreak", "noteref")
 
     fun parse(html: String, baseUri: String = ""): List<String> {
         if (html.isBlank()) return emptyList()
         val document = Jsoup.parse(html, baseUri)
-        document.select("script, style, nav[epub|type=toc], nav, aside, audio, video").remove()
+        document.select(
+            "script, style, nav[epub|type=toc], nav, aside, footer, audio, video, " +
+                "[hidden], [aria-hidden=true], [role=navigation], [role=doc-footnote], [role=doc-endnote], " +
+                "[epub|type=footnote], [epub|type=endnote], [epub|type=pagebreak]",
+        ).remove()
+        document.select("[style]")
+            .filter { element ->
+                val style = element.attr("style").lowercase().replace(" ", "")
+                "display:none" in style || "visibility:hidden" in style
+            }
+            .forEach(Element::remove)
+        document.getAllElements()
+            .filter { element ->
+                element.attr("epub:type")
+                    .lowercase()
+                    .split(Regex("\\s+"))
+                    .any { type -> type in excludedEpubTypes }
+            }
+            .toList()
+            .asReversed()
+            .forEach(Element::remove)
+        document.select("[role=doc-noteref]").remove()
         val paragraphs = document.select(READABLE_SELECTOR)
             .map(::readableText)
             .filter { it.length >= 2 }

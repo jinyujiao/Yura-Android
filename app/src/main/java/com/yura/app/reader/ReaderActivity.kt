@@ -96,7 +96,7 @@ import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
 import com.yura.app.data.YuraDatabase
 import com.yura.app.library.ReadiumServices
-import com.yura.tts.SimpleTtsController
+import com.yura.tts.android.MediaService
 import com.yura.app.ui.theme.YuraTheme
 import com.yura.app.util.applyDeviceOrientationPolicy
 import java.io.File
@@ -142,6 +142,7 @@ class ReaderActivity : FragmentActivity() {
     private var currentLocator: Locator? = null
     private var activeReaderPreferences: EpubPreferences = ReaderPreferencesStore.defaults
     private var activeTtsReadingOrderIndex = -1
+    private var displayedReadingOrderIndex = -1
     private var activeTtsParagraphTotal = 0
     private var activeBookId = -1L
     private var previewMode = false
@@ -149,7 +150,9 @@ class ReaderActivity : FragmentActivity() {
     private var readerForeground = false
     private var pendingForegroundTtsLocator: Locator? = null
     private var pendingForegroundTtsParagraphIndex = -1
-    private val ttsController by lazy { SimpleTtsController(this) }
+    private var ttsStartRequestId = 0L
+    private var ttsStartPending = false
+    private val ttsController by lazy { MediaService.controller(applicationContext) }
     private val systemBarsController by lazy { ReaderSystemBarsController(window) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -197,8 +200,20 @@ class ReaderActivity : FragmentActivity() {
         readerForeground = true
         pendingForegroundTtsLocator?.let { locator ->
             pendingForegroundTtsLocator = null
-            navigatorFragment?.go(locator, animated = false)
-            scheduleForegroundTtsSync(900)
+            if (displayedReadingOrderIndex == activeTtsReadingOrderIndex) {
+                android.util.Log.d(
+                    "YuraTts",
+                    "foreground sync in-place chapter=$activeTtsReadingOrderIndex paragraph=$pendingForegroundTtsParagraphIndex",
+                )
+                scheduleForegroundTtsSync(100)
+            } else {
+                android.util.Log.d(
+                    "YuraTts",
+                    "foreground sync navigate displayed=$displayedReadingOrderIndex active=$activeTtsReadingOrderIndex",
+                )
+                navigatorFragment?.go(locator, animated = false)
+                scheduleForegroundTtsSync(900)
+            }
         } ?: scheduleForegroundTtsSync(300)
     }
 
@@ -210,6 +225,7 @@ class ReaderActivity : FragmentActivity() {
 
     override fun onDestroy() {
         if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flushBlocking()
+        invalidatePendingTtsStart()
         ttsController.onParagraphChanged = null
         ttsController.onQueueEnded = null
         progressionSaver.cancel()
@@ -217,7 +233,6 @@ class ReaderActivity : FragmentActivity() {
         navigatorFragment = null
         publication?.close()
         asset?.close()
-        ttsController.shutdown()
         publication = null
         asset = null
         super.onDestroy()
@@ -320,7 +335,8 @@ class ReaderActivity : FragmentActivity() {
                         settingsVisible = true
                     },
                     onTts = {
-                        if (ttsActive) {
+                        if (ttsActive || ttsStartPending) {
+                            invalidatePendingTtsStart()
                             ttsController.stop()
                             ttsVisible = false
                             controlsVisible = false
@@ -343,6 +359,7 @@ class ReaderActivity : FragmentActivity() {
                     },
                     onPageChanged = { page, total, locator ->
                         currentLocator = locator
+                        displayedReadingOrderIndex = currentReadingOrderIndex(current.publication, locator)
                         currentPage = page + 1
                         totalPages = total.coerceAtLeast(1)
                         progressLabel = "${((locator.locations.totalProgression ?: 0.0) * 100).toInt()}%"
@@ -601,15 +618,19 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private fun startTtsFromTaggedPage(startParagraphOverride: Int? = null) {
+        val requestId = ++ttsStartRequestId
+        ttsStartPending = true
         if (activeTtsReadingOrderIndex < 0) {
             activeTtsReadingOrderIndex = currentReadingOrderIndex()
         }
         val webView = navigatorFragment?.publicationView?.let { findWebView(it) }
         if (webView == null) {
+            ttsStartPending = false
             Toast.makeText(this, "\u5f53\u524d\u9875\u9762\u8fd8\u6ca1\u6709\u51c6\u5907\u597d\u6717\u8bfb", Toast.LENGTH_SHORT).show()
             return
         }
         currentTtsWebView = webView
+        val requestedReadingOrderIndex = activeTtsReadingOrderIndex
 
         webView.evaluateJavascript(
             """
@@ -649,15 +670,34 @@ class ReaderActivity : FragmentActivity() {
                     return best;
                 }
                 var readableSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
+                function shouldSkipElement(element) {
+                    for (var node = element; node; node = node.parentElement) {
+                        var tag = (node.tagName || '').toLowerCase();
+                        if (tag === 'nav' || tag === 'aside' || tag === 'footer' || tag === 'script' || tag === 'style' || tag === 'audio' || tag === 'video') return true;
+                        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return true;
+                        var role = (node.getAttribute('role') || '').toLowerCase();
+                        if (role === 'navigation' || role === 'doc-footnote' || role === 'doc-endnote') return true;
+                        var epubType = (node.getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
+                        if (epubType.indexOf('toc') >= 0 || epubType.indexOf('footnote') >= 0 || epubType.indexOf('endnote') >= 0 || epubType.indexOf('pagebreak') >= 0) return true;
+                    }
+                    var style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+                    return !!style && (style.display === 'none' || style.visibility === 'hidden');
+                }
                 function readableText(element) {
                     var descendants = element.querySelectorAll(readableSelector);
-                    if (descendants.length === 0) {
-                        return cleanTtsText(element.readiumOriginalParagraphText || element.innerText);
+                    if (descendants.length === 0 && element.readiumOriginalParagraphText) {
+                        return cleanTtsText(element.readiumOriginalParagraphText);
                     }
                     var clone = element.cloneNode(true);
                     var cloneDescendants = clone.querySelectorAll(readableSelector);
                     for (var j = cloneDescendants.length - 1; j >= 0; j--) {
                         cloneDescendants[j].remove();
+                    }
+                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup');
+                    for (var j = inlineNodes.length - 1; j >= 0; j--) {
+                        var inlineRole = (inlineNodes[j].getAttribute('role') || '').toLowerCase();
+                        var inlineTypes = (inlineNodes[j].getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
+                        if (inlineRole === 'doc-noteref' || inlineTypes.indexOf('noteref') >= 0) inlineNodes[j].remove();
                     }
                     return cleanTtsText(clone.innerText || clone.textContent);
                 }
@@ -672,6 +712,7 @@ class ReaderActivity : FragmentActivity() {
                     nodes[i].removeAttribute('data-tts-readable-idx');
                 }
                 for (var i = 0; i < nodes.length; i++) {
+                    if (shouldSkipElement(nodes[i])) continue;
                     var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
                     if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
                     var text = readableText(nodes[i]);
@@ -708,6 +749,14 @@ class ReaderActivity : FragmentActivity() {
             })();
             """.trimIndent(),
         ) { raw ->
+            if (requestId != ttsStartRequestId ||
+                webView !== currentTtsWebView ||
+                requestedReadingOrderIndex != activeTtsReadingOrderIndex
+            ) {
+                android.util.Log.d("YuraTts", "extractTagged ignored stale request=$requestId current=$ttsStartRequestId")
+                return@evaluateJavascript
+            }
+            ttsStartPending = false
             val payload = runCatching {
                 raw
                     ?.takeIf { it != "null" }
@@ -741,6 +790,11 @@ class ReaderActivity : FragmentActivity() {
                 ttsController.speak(paragraphs, firstVisible, activeTtsReadingOrderIndex)
             }
         }
+    }
+
+    private fun invalidatePendingTtsStart() {
+        ttsStartRequestId++
+        ttsStartPending = false
     }
 
     private fun highlightTtsParagraph(index: Int) {
@@ -859,15 +913,34 @@ class ReaderActivity : FragmentActivity() {
                     return /[0-9A-Za-z\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(cleaned) ? cleaned : '';
                 }
                 var readableSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
+                function shouldSkipElement(element) {
+                    for (var node = element; node; node = node.parentElement) {
+                        var tag = (node.tagName || '').toLowerCase();
+                        if (tag === 'nav' || tag === 'aside' || tag === 'footer' || tag === 'script' || tag === 'style' || tag === 'audio' || tag === 'video') return true;
+                        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return true;
+                        var role = (node.getAttribute('role') || '').toLowerCase();
+                        if (role === 'navigation' || role === 'doc-footnote' || role === 'doc-endnote') return true;
+                        var epubType = (node.getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
+                        if (epubType.indexOf('toc') >= 0 || epubType.indexOf('footnote') >= 0 || epubType.indexOf('endnote') >= 0 || epubType.indexOf('pagebreak') >= 0) return true;
+                    }
+                    var style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+                    return !!style && (style.display === 'none' || style.visibility === 'hidden');
+                }
                 function readableText(element) {
                     var descendants = element.querySelectorAll(readableSelector);
-                    if (descendants.length === 0) {
-                        return cleanTtsText(element.readiumOriginalParagraphText || element.innerText);
+                    if (descendants.length === 0 && element.readiumOriginalParagraphText) {
+                        return cleanTtsText(element.readiumOriginalParagraphText);
                     }
                     var clone = element.cloneNode(true);
                     var cloneDescendants = clone.querySelectorAll(readableSelector);
                     for (var j = cloneDescendants.length - 1; j >= 0; j--) {
                         cloneDescendants[j].remove();
+                    }
+                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup');
+                    for (var j = inlineNodes.length - 1; j >= 0; j--) {
+                        var inlineRole = (inlineNodes[j].getAttribute('role') || '').toLowerCase();
+                        var inlineTypes = (inlineNodes[j].getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
+                        if (inlineRole === 'doc-noteref' || inlineTypes.indexOf('noteref') >= 0) inlineNodes[j].remove();
                     }
                     return cleanTtsText(clone.innerText || clone.textContent);
                 }
@@ -877,6 +950,7 @@ class ReaderActivity : FragmentActivity() {
                     nodes[i].removeAttribute('data-tts-readable-idx');
                 }
                 for (var i = 0; i < nodes.length; i++) {
+                    if (shouldSkipElement(nodes[i])) continue;
                     var fragmentId = nodes[i].getAttribute('data-readium-paragraph-fragment');
                     if (fragmentId !== null && nodes[i].readiumParagraphFragmentIndex !== 0) continue;
                     var text = readableText(nodes[i]);
@@ -928,9 +1002,12 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
-    private fun currentReadingOrderIndex(publication: Publication? = this.publication): Int {
+    private fun currentReadingOrderIndex(
+        publication: Publication? = this.publication,
+        locator: Locator? = currentLocator,
+    ): Int {
         val activePublication = publication ?: return -1
-        val href = currentLocator?.href?.toString()?.substringBefore('#') ?: return -1
+        val href = locator?.href?.toString()?.substringBefore('#') ?: return -1
         return activePublication.readingOrder.indexOfFirst { link ->
             val linkHref = link.href.toString().substringBefore('#')
             linkHref == href || href.startsWith(linkHref) || linkHref.startsWith(href)
@@ -967,8 +1044,12 @@ class ReaderActivity : FragmentActivity() {
             continueTtsToNextChapter()
             return
         }
+        val transitionRequestId = ++ttsStartRequestId
+        ttsStartPending = true
         lifecycleScope.launch {
             kotlinx.coroutines.delay(900)
+            if (transitionRequestId != ttsStartRequestId) return@launch
+            ttsStartPending = false
             activeTtsReadingOrderIndex = nextIndex
             startTtsFromTaggedPage(startParagraphOverride = 0)
         }
@@ -985,10 +1066,14 @@ class ReaderActivity : FragmentActivity() {
         currentTtsWebView = null
         currentTtsDomIndexByParagraph = emptyList()
         ttsController.holdPlaybackWakeLock()
+        val transitionRequestId = ++ttsStartRequestId
+        ttsStartPending = true
         lifecycleScope.launch {
             val paragraphs = withContext(Dispatchers.IO) {
                 extractTtsParagraphsFromResource(publication, link)
             }
+            if (transitionRequestId != ttsStartRequestId) return@launch
+            ttsStartPending = false
             if (paragraphs.isEmpty()) {
                 continueTtsToNextChapter()
             } else {
