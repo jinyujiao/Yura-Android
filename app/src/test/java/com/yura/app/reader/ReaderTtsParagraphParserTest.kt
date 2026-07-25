@@ -64,6 +64,13 @@ class ReaderTtsParagraphParserTest {
     }
 
     @Test
+    fun ignoresRubyPronunciationAnnotations() {
+        val html = "<html><body><p><ruby>汉<rt>han</rt><rp>（</rp><rt>hàn</rt><rp>）</rp></ruby>字。</p></body></html>"
+
+        assertEquals(listOf("汉字。"), ReaderTtsParagraphParser.parse(html))
+    }
+
+    @Test
     fun preservesProsodyForProviderSpecificCleaning() {
         val source = "“咿哈哈……等等？！——”"
 

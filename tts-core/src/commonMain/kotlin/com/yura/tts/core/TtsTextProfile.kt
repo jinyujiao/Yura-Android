@@ -13,7 +13,7 @@ class SystemTtsTextProfile(
 class MicrosoftTtsTextProfile(
     private val processor: TtsTextProcessor,
 ) : TtsTextProfile {
-    override fun prepare(text: String): String = processor.clean(text)
+    override fun prepare(text: String): String = processor.cleanForMicrosoft(text)
 }
 
 class MimoTtsTextProfile(

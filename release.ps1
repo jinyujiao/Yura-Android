@@ -227,7 +227,6 @@ try {
             ":app:assembleRelease",
             ":app:bundleRelease",
             "--no-daemon",
-            "--no-configuration-cache",
             "--stacktrace"
         )
 

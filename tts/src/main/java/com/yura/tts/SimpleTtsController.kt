@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -114,6 +115,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     private var currentSentenceIndex = -1
     private var synthesizingIndex = -1
     private var pendingPrefetchPlaybackIndex = -1
+    private var pendingParagraphPauseSentenceIndex = -1
     private var lastStartedPlaybackRequest: TtsRequestIdentity? = null
     private var lastHandledEndedRequest: TtsRequestIdentity? = null
     private var finishedQueueSessionId: Long? = null
@@ -389,6 +391,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         pendingSentenceIndex = null
         synthesizingIndex = -1
         pendingPrefetchPlaybackIndex = -1
+        pendingParagraphPauseSentenceIndex = -1
         queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
@@ -573,6 +576,12 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
     fun play() {
         if (speechItems.isEmpty()) return
         userPaused = false
+        if (_state.value.state == TtsState.PAUSED && pendingParagraphPauseSentenceIndex in speechItems.indices) {
+            val sentenceIndex = pendingParagraphPauseSentenceIndex
+            pendingParagraphPauseSentenceIndex = -1
+            playNextSentenceNow(sentenceIndex)
+            return
+        }
         if (_state.value.state == TtsState.PAUSED && player.playbackState != Player.STATE_IDLE) {
             if (isPrefetchKeepAlivePlaying()) {
                 val sentenceIndex = currentSentenceIndex
@@ -617,6 +626,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
+        pendingParagraphPauseSentenceIndex = -1
         _state.value = _state.value.copy(
             state = TtsState.LOADING,
             paragraphIndex = 0,
@@ -664,6 +674,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         activeParagraphIndex = -1
         currentSentenceIndex = -1
         synthesizingIndex = -1
+        pendingParagraphPauseSentenceIndex = -1
         queuedPlayerSequences.clear()
         prefetchingIndices.clear()
         prefetchedIndices.clear()
@@ -805,6 +816,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         prefetchingIndices.clear()
         prefetchedIndices.clear()
         pendingPrefetchPlaybackIndex = -1
+        pendingParagraphPauseSentenceIndex = -1
         currentSentenceIndex = safeIndex
         synthesizeSentence(safeIndex)
     }
@@ -816,6 +828,34 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             finishQueue()
             return
         }
+
+        if (isParagraphBoundary(currentSentenceIndex, nextIndex)) {
+            scheduleParagraphPause(nextIndex)
+            return
+        }
+
+        playNextSentenceNow(nextIndex)
+    }
+
+    private fun scheduleParagraphPause(nextIndex: Int) {
+        val expectedSessionId = sessionId
+        pendingParagraphPauseSentenceIndex = nextIndex
+        Log.d(TAG, "paragraph pause scheduled next=$nextIndex durationMs=$PARAGRAPH_PAUSE_MS")
+        mainHandler.postDelayed(
+            {
+                if (stopping || userPaused || sessionId != expectedSessionId ||
+                    pendingParagraphPauseSentenceIndex != nextIndex
+                ) {
+                    return@postDelayed
+                }
+                pendingParagraphPauseSentenceIndex = -1
+                playNextSentenceNow(nextIndex)
+            },
+            PARAGRAPH_PAUSE_MS,
+        )
+    }
+
+    private fun playNextSentenceNow(nextIndex: Int) {
         currentSentenceIndex = nextIndex
         val file = audioCache.fileFor(sessionId, nextIndex)
         if (nextIndex in prefetchingIndices) {
@@ -835,6 +875,12 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             synthesizeSentence(nextIndex)
         }
     }
+
+    private fun isParagraphBoundary(previousSentenceIndex: Int, nextSentenceIndex: Int): Boolean =
+        TtsPlaybackPolicy.isParagraphBoundary(
+            previousParagraphIndex = speechItems.getOrNull(previousSentenceIndex)?.paragraphIndex,
+            nextParagraphIndex = speechItems.getOrNull(nextSentenceIndex)?.paragraphIndex,
+        )
 
     private fun finishQueue() {
         if (finishedQueueSessionId == sessionId) {
@@ -1027,6 +1073,9 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         MediaItem.Builder()
             .setMediaId(TtsRequestId.media(request))
             .setUri(Uri.fromFile(file))
+            .apply {
+                if (_state.value.provider == TtsProvider.MICROSOFT) setMimeType(MimeTypes.AUDIO_MPEG)
+            }
             .setMediaMetadata(
                 MediaMetadata.Builder().apply {
                     setTitle(mediaTitle)
@@ -1047,6 +1096,10 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             if (sentenceIndex in queuedPlayerSequences) {
                 sentenceIndex++
                 continue
+            }
+            if (isParagraphBoundary(sentenceIndex - 1, sentenceIndex)) {
+                Log.d(TAG, "playlist stops at paragraph boundary before=$sentenceIndex")
+                return
             }
             val file = audioCache.fileFor(sessionId, sentenceIndex)
             if (sentenceIndex !in prefetchedIndices || !file.exists() || file.length() == 0L) return
@@ -1235,6 +1288,7 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
             pendingSentenceIndex = null
             synthesizingIndex = -1
             pendingPrefetchPlaybackIndex = -1
+            pendingParagraphPauseSentenceIndex = -1
             queuedPlayerSequences.clear()
             prefetchingIndices.clear()
             prefetchedIndices.clear()
@@ -1272,8 +1326,8 @@ class SimpleTtsController(context: Context) : TextToSpeech.OnInitListener {
         private const val MIMO_MODEL = "mimo-v2.5-tts"
         private const val PREFETCH_AHEAD_COUNT = 6
         private const val PREFETCH_KEEP_ALIVE_MEDIA_PREFIX = "yura-tts-waiting:"
+        private const val PARAGRAPH_PAUSE_MS = 420L
         private const val BACKGROUND_CONTINUATION_WAKE_LOCK_MS = 10 * 60 * 1000L
         private const val TAG = "YuraTts"
     }
 }
-

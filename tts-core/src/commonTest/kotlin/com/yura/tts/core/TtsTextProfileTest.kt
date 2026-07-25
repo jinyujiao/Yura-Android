@@ -59,6 +59,29 @@ class TtsTextProfileTest {
     }
 
     @Test
+    fun mimoRemovesHtmlTagsAttributesAndNonSpeechBlocks() {
+        assertEquals(
+            "正文继续。",
+            mimo.prepare("<span class=\"hero\" data-id=\"42\">正文</span><img src=\"cover.jpg\" alt=\"封面\"/>继续。"),
+        )
+        assertEquals("自定义正文。", mimo.prepare("<custom-widget data-value=\"abc\">自定义正文。</custom-widget>"))
+        assertEquals("前后。", mimo.prepare("前<script>window.alert('不要朗读')</script>后。"))
+        assertEquals("可见正文。", mimo.prepare("<![CDATA[可见正文。]]>"))
+        assertEquals("半截正文", mimo.prepare("半截正文<span class=\"broken\""))
+        assertEquals("汉字。", mimo.prepare("<ruby>汉<rt>han</rt><rp>（</rp><rt>hàn</rt><rp>）</rp></ruby>字。"))
+    }
+
+    @Test
+    fun mimoRemovesUnsafeUnicodeWithoutChangingDialoguePunctuation() {
+        val unsafe = "\u0000\u0007\u00AD\u200B\u200E\u202E\u2060\u3164\uFFFC\uFFFD\uE000"
+
+        assertEquals("他说：“好了。”", microsoft.prepare("他${unsafe}说：“好了。”"))
+        assertEquals("他说：“好了。”", mimo.prepare("他${unsafe}说：“好了。”"))
+        assertEquals("他说：“真的吗？”", mimo.prepare("他说：“真的吗？”"))
+        assertEquals("她答：“当然！”", mimo.prepare("她答：“当然！”"))
+    }
+
+    @Test
     fun sourceSplittingPreservesMimoProsodyAndBoundaries() {
         val sentences = processor.splitSourceSentences("他说：“等等……”然后继续。下一句——结束。")
 

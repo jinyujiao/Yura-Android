@@ -53,9 +53,10 @@ internal object ReaderTtsParagraphParser {
             .drop(1)
             .filter { descendant -> descendant.normalName() in readableTags }
             .toList()
-        if (readableDescendants.isEmpty()) return cleanForTts(element.text())
-
         val clone = element.clone()
+        clone.select("rt, rp").remove()
+        if (readableDescendants.isEmpty()) return cleanForTts(clone.text())
+
         clone.getAllElements()
             .asSequence()
             .drop(1)

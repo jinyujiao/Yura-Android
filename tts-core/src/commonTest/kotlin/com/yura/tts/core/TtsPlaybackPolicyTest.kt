@@ -42,4 +42,12 @@ class TtsPlaybackPolicyTest {
             TtsPlaybackPolicy.shouldStartPlayback(request.copy(sessionId = 8L), request, 3),
         )
     }
+
+    @Test
+    fun paragraphBoundaryRequiresTwoDifferentParagraphs() {
+        assertEquals(false, TtsPlaybackPolicy.isParagraphBoundary(null, 1))
+        assertEquals(false, TtsPlaybackPolicy.isParagraphBoundary(1, null))
+        assertEquals(false, TtsPlaybackPolicy.isParagraphBoundary(1, 1))
+        assertEquals(true, TtsPlaybackPolicy.isParagraphBoundary(1, 2))
+    }
 }

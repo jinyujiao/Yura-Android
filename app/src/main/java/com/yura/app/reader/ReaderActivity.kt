@@ -693,8 +693,13 @@ class ReaderActivity : FragmentActivity() {
                     for (var j = cloneDescendants.length - 1; j >= 0; j--) {
                         cloneDescendants[j].remove();
                     }
-                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup');
+                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup, rt, rp');
                     for (var j = inlineNodes.length - 1; j >= 0; j--) {
+                        var inlineTag = (inlineNodes[j].tagName || '').toLowerCase();
+                        if (inlineTag === 'rt' || inlineTag === 'rp') {
+                            inlineNodes[j].remove();
+                            continue;
+                        }
                         var inlineRole = (inlineNodes[j].getAttribute('role') || '').toLowerCase();
                         var inlineTypes = (inlineNodes[j].getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
                         if (inlineRole === 'doc-noteref' || inlineTypes.indexOf('noteref') >= 0) inlineNodes[j].remove();
@@ -936,8 +941,13 @@ class ReaderActivity : FragmentActivity() {
                     for (var j = cloneDescendants.length - 1; j >= 0; j--) {
                         cloneDescendants[j].remove();
                     }
-                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup');
+                    var inlineNodes = clone.querySelectorAll('[role="doc-noteref"], a, sup, rt, rp');
                     for (var j = inlineNodes.length - 1; j >= 0; j--) {
+                        var inlineTag = (inlineNodes[j].tagName || '').toLowerCase();
+                        if (inlineTag === 'rt' || inlineTag === 'rp') {
+                            inlineNodes[j].remove();
+                            continue;
+                        }
                         var inlineRole = (inlineNodes[j].getAttribute('role') || '').toLowerCase();
                         var inlineTypes = (inlineNodes[j].getAttribute('epub:type') || '').toLowerCase().split(/\s+/);
                         if (inlineRole === 'doc-noteref' || inlineTypes.indexOf('noteref') >= 0) inlineNodes[j].remove();

@@ -18,4 +18,11 @@ object TtsPlaybackPolicy {
         currentQueueSequence: Int,
     ): Boolean = request.queueSequence == currentQueueSequence && request != lastStartedRequest
 
+    fun isParagraphBoundary(
+        previousParagraphIndex: Int?,
+        nextParagraphIndex: Int?,
+    ): Boolean = previousParagraphIndex != null &&
+        nextParagraphIndex != null &&
+        previousParagraphIndex != nextParagraphIndex
+
 }

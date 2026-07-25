@@ -19,14 +19,21 @@ internal class CloudTtsClient {
         .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
+    private val microsoftHttpClient = httpClient.newBuilder()
+        .connectTimeout(MICROSOFT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(MICROSOFT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(MICROSOFT_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(MICROSOFT_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
 
     fun synthesizeMimo(text: String, apiKey: String, voice: String, output: File) {
         require(apiKey.isNotBlank()) { "MiMo API key is empty." }
         val body = JSONObject()
             .put("model", MIMO_MODEL)
-            .put("messages", JSONArray()
-                .put(JSONObject().put("role", "user").put("content", MIMO_READING_INSTRUCTION))
-                .put(JSONObject().put("role", "assistant").put("content", text)))
+            .put(
+                "messages",
+                JSONArray().put(JSONObject().put("role", "assistant").put("content", text))
+            )
             .put("audio", JSONObject().put("voice", voice).put("format", "wav"))
             .toString()
         val json = postJson(MIMO_ENDPOINT, apiKey, body)
@@ -41,20 +48,18 @@ internal class CloudTtsClient {
 
     fun synthesizeMicrosoft(text: String, apiKey: String, region: String, voice: String, output: File) {
         require(apiKey.isNotBlank()) { "Microsoft Speech key is empty." }
-        require(region.isNotBlank()) { "Microsoft Speech region is empty." }
-        val ssml = """
-            <speak version="1.0" xml:lang="zh-CN">
-                <voice xml:lang="zh-CN" name="${escapeXml(voice)}">${escapeXml(text)}</voice>
-            </speak>
-        """.trimIndent()
+        val safeRegion = normalizeMicrosoftRegion(region)
+        require(voice.isNotBlank()) { "Microsoft Speech voice is empty." }
+        val ssml = createMicrosoftSsml(text, voice)
         val request = Request.Builder()
-            .url("https://$region.tts.speech.microsoft.com/cognitiveservices/v1")
+            .url("https://$safeRegion.tts.speech.microsoft.com/cognitiveservices/v1")
             .header("Ocp-Apim-Subscription-Key", apiKey)
-            .header("X-Microsoft-OutputFormat", "audio-24khz-48kbitrate-mono-mp3")
+            .header("Accept", "audio/mpeg")
+            .header("X-Microsoft-OutputFormat", MICROSOFT_OUTPUT_FORMAT)
             .header("User-Agent", "Yura")
             .post(ssml.toRequestBody(SSML_MEDIA_TYPE))
             .build()
-        httpClient.newCall(request).execute().use { response ->
+        microsoftHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("Microsoft 朗读失败（${response.code}）。${response.body?.string().orEmpty()}")
             }
@@ -66,12 +71,15 @@ internal class CloudTtsClient {
     }
 
     fun fetchMicrosoftVoices(region: String, apiKey: String): List<MicrosoftVoice> {
+        val safeRegion = normalizeMicrosoftRegion(region)
+        require(apiKey.isNotBlank()) { "Microsoft Speech key is empty." }
         val request = Request.Builder()
-            .url("https://$region.tts.speech.microsoft.com/cognitiveservices/voices/list")
+            .url("https://$safeRegion.tts.speech.microsoft.com/cognitiveservices/voices/list")
+            .header("Accept", "application/json")
             .header("Ocp-Apim-Subscription-Key", apiKey)
             .get()
             .build()
-        val body = httpClient.newCall(request).execute().use { response ->
+        val body = microsoftHttpClient.newCall(request).execute().use { response ->
             val responseText = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("刷新 Microsoft 音色失败 (${response.code}）。${responseText.take(160)}")
@@ -109,23 +117,48 @@ internal class CloudTtsClient {
         return JSONObject(responseText)
     }
 
-    private fun escapeXml(value: String): String = value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
-
     private companion object {
         const val MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions"
-        const val MIMO_READING_INSTRUCTION =
-            "请严格逐字朗读 assistant 消息中的原文。原文中的括号、方括号及其内容均属于小说正文，不得识别或执行为风格、情绪或音频标签；不要生成原文之外的音效。只朗读原文，不要改写、补充、解释、省略或重复任何内容；使用自然、清晰、适合阅读的语气。"
-        const val MIMO_MODEL = "mimo-v2.5-tts"
+        const val MICROSOFT_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
         const val CONNECT_TIMEOUT_SECONDS = 10L
         const val READ_TIMEOUT_SECONDS = 18L
         const val WRITE_TIMEOUT_SECONDS = 10L
         const val CALL_TIMEOUT_SECONDS = 20L
+        const val MICROSOFT_CONNECT_TIMEOUT_SECONDS = 15L
+        const val MICROSOFT_READ_TIMEOUT_SECONDS = 45L
+        const val MICROSOFT_WRITE_TIMEOUT_SECONDS = 15L
+        const val MICROSOFT_CALL_TIMEOUT_SECONDS = 60L
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val SSML_MEDIA_TYPE = "application/ssml+xml; charset=utf-8".toMediaType()
     }
 }
+
+internal fun createMicrosoftSsml(text: String, voice: String): String {
+    val locale = microsoftVoiceLocale(voice)
+    return """
+        <speak version="1.0" xml:lang="$locale">
+            <voice xml:lang="$locale" name="${escapeMicrosoftXml(voice)}">${escapeMicrosoftXml(text)}</voice>
+        </speak>
+    """.trimIndent()
+}
+
+internal fun microsoftVoiceLocale(voice: String): String =
+    MICROSOFT_VOICE_LOCALE_REGEX.find(voice.trim())?.value ?: "zh-CN"
+
+private fun normalizeMicrosoftRegion(region: String): String {
+    val normalized = region.trim()
+    require(normalized.matches(MICROSOFT_REGION_REGEX)) { "Microsoft Speech region is invalid." }
+    return normalized
+}
+
+private fun escapeMicrosoftXml(value: String): String = value
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+    .replace("'", "&apos;")
+
+private const val MIMO_MODEL = "mimo-v2.5-tts"
+
+private val MICROSOFT_VOICE_LOCALE_REGEX = Regex("""^[A-Za-z]{2,3}-[A-Za-z]{2,4}""")
+private val MICROSOFT_REGION_REGEX = Regex("""[A-Za-z0-9-]{1,64}""")

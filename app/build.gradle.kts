@@ -1,3 +1,4 @@
+import com.yura.build.VerifyReleaseSigningConfigurationTask
 import java.util.Properties
 
 plugins {
@@ -14,6 +15,9 @@ val releaseStoreFile = providers.gradleProperty("RELEASE_STORE_FILE").orNull
 val releaseStorePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
 val releaseKeyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
 val releaseKeyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+val releaseKeystoreFile = releaseStoreFile
+    ?.takeIf { it.isNotBlank() }
+    ?.let(rootProject::file)
 val releaseSigningConfigured = listOf(
     releaseStoreFile,
     releaseStorePassword,
@@ -59,7 +63,7 @@ android {
             enableV2Signing = true
             enableV3Signing = true
             if (releaseSigningConfigured) {
-                storeFile = file(requireNotNull(releaseStoreFile))
+                storeFile = requireNotNull(releaseKeystoreFile)
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -102,18 +106,13 @@ kotlin {
     }
 }
 
-val verifyReleaseSigningConfiguration = tasks.register("verifyReleaseSigningConfiguration") {
+val verifyReleaseSigningConfiguration = tasks.register<VerifyReleaseSigningConfigurationTask>(
+    "verifyReleaseSigningConfiguration"
+) {
     group = "verification"
     description = "Fails when a formal release is requested without a complete signing configuration."
-    doLast {
-        check(releaseSigningConfigured) {
-            "Release signing is incomplete. Configure RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, " +
-                "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD in ~/.gradle/gradle.properties or CI secrets."
-        }
-        check(file(requireNotNull(releaseStoreFile)).isFile) {
-            "Release keystore does not exist: $releaseStoreFile"
-        }
-    }
+    signingConfigured.set(releaseSigningConfigured)
+    storeFilePath.set(releaseKeystoreFile?.absolutePath.orEmpty())
 }
 
 tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {

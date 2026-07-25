@@ -91,10 +91,20 @@ class TtsTextProcessor {
         return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
     }
 
+    fun cleanForMicrosoft(text: String): String {
+        val cleaned = stripUnsupportedCloudCharacters(clean(text))
+            .replace(WHITESPACE_REGEX, " ")
+            .trim()
+        return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
+    }
+
     fun cleanForMimo(text: String): String {
         var cleaned = decodeHtmlEntities(text)
+        cleaned = NON_SPEECH_HTML_BLOCK_REGEX.replace(cleaned, " ")
+        cleaned = CDATA_REGEX.replace(cleaned, "$1")
         cleaned = MARKDOWN_LINK_REGEX.replace(cleaned, "$1")
         cleaned = normalizeAngleTagsForMimo(cleaned)
+            .replace(MALFORMED_HTML_TAG_REGEX, " ")
             .replace(MARKDOWN_DECORATION_REGEX, " ")
             .replace(BARE_ELLIPSIS_REGEX, "……")
             .replace(LONG_DASH_REGEX, "——")
@@ -104,6 +114,7 @@ class TtsTextProcessor {
             .replace(REPLACEMENT_CHARACTER_REGEX, "")
             .replace(PRIVATE_USE_REGEX, "")
 
+        cleaned = stripUnsupportedCloudCharacters(cleaned)
         cleaned = removeMimoSquareBrackets(cleaned)
             .replace(MIMO_CHECKMARK_REGEX, "")
         cleaned = stripEmoji(cleaned)
@@ -123,6 +134,7 @@ class TtsTextProcessor {
             .replace(LATIN_NUMBER_BEFORE_CJK_REGEX, "$1 $2")
             .replace(ZERO_WIDTH_REGEX, "")
             .replace(WHITESPACE_REGEX, " ")
+            .replace(CJK_BETWEEN_WHITESPACE_REGEX, "")
             .trim()
         return cleaned.takeUnless { value -> value.isBlank() || value.none { it.isLetterOrDigit() } }.orEmpty()
     }
@@ -160,15 +172,79 @@ class TtsTextProcessor {
 
     private fun normalizeAngleTagsForMimo(text: String): String = HTML_TAG_REGEX.replace(text) { match ->
         val raw = match.value
-        if (raw.startsWith("<!--")) return@replace " "
         val content = raw.substring(1, raw.length - 1).trim()
-        val tagName = content
-            .removePrefix("/")
-            .substringBefore(' ')
-            .substringBefore('/')
-            .lowercase()
-        if (tagName in HTML_TAG_NAMES) " " else "【$content】"
+        when {
+            isMarkupTag(content) -> " "
+            content.isBlank() -> " "
+            else -> content
+        }
     }
+
+    private fun isMarkupTag(content: String): Boolean {
+        if (content.startsWith("/") || content.startsWith("!") || content.startsWith("?")) return true
+        if (content.any { character -> character == '=' || character == '"' || character == '\'' }) return true
+        val tagName = content.substringBefore(' ').substringBefore('/').substringBefore('\t')
+        return tagName.firstOrNull()?.isAsciiLetter() == true && tagName.all { it.isHtmlTagNameCharacter() }
+    }
+
+    private fun Char.isAsciiLetter(): Boolean = this in 'A'..'Z' || this in 'a'..'z'
+
+    private fun Char.isHtmlTagNameCharacter(): Boolean = isAsciiLetter() || isDigit() || this == ':' || this == '_' || this == '-'
+
+    private fun stripUnsupportedCloudCharacters(text: String): String = buildString(text.length) {
+        var index = 0
+        while (index < text.length) {
+            val first = text[index]
+            val codePoint: Int
+            val width: Int
+            when {
+                first.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate() -> {
+                    codePoint = 0x10000 + ((first.code - 0xD800) shl 10) + (text[index + 1].code - 0xDC00)
+                    width = 2
+                }
+                first.isSurrogate() -> {
+                    index++
+                    continue
+                }
+                else -> {
+                    codePoint = first.code
+                    width = 1
+                }
+            }
+
+            when {
+                codePoint == '\n'.code || codePoint == '\r'.code || codePoint == '\t'.code -> append(' ')
+                codePoint < 0x20 || codePoint in 0x7F..0x9F || isUnsafeMimoCodePoint(codePoint) -> Unit
+                else -> append(text, index, index + width)
+            }
+            index += width
+        }
+    }
+
+    private fun isUnsafeMimoCodePoint(codePoint: Int): Boolean =
+        codePoint == 0x00AD ||
+            codePoint == 0x034F ||
+            codePoint == 0x061C ||
+            codePoint in 0x115F..0x1160 ||
+            codePoint in 0x17B4..0x17B5 ||
+            codePoint in 0x180B..0x180E ||
+            codePoint in 0x200B..0x200F ||
+            codePoint in 0x202A..0x202E ||
+            codePoint in 0x2060..0x206F ||
+            codePoint == 0x3164 ||
+            codePoint in 0xFE00..0xFE0F ||
+            codePoint == 0xFEFF ||
+            codePoint == 0xFFA0 ||
+            codePoint in 0xFFF9..0xFFFD ||
+            codePoint in 0x1BCA0..0x1BCAF ||
+            codePoint in 0x1D173..0x1D17A ||
+            codePoint in 0xE0000..0xE007F ||
+            codePoint in 0xE0100..0xE01EF ||
+            codePoint in 0xE000..0xF8FF ||
+            codePoint in 0xF0000..0xFFFFD ||
+            codePoint in 0x100000..0x10FFFD ||
+            codePoint in 0xFDD0..0xFDEF ||
+            (codePoint and 0xFFFE) == 0xFFFE
 
     private fun removeMimoSquareBrackets(text: String): String = buildString(text.length) {
         text.forEach { character ->
@@ -359,6 +435,7 @@ class TtsTextProcessor {
         val LATIN_NUMBER_BEFORE_CJK_REGEX = Regex("""([A-Za-z0-9])([\u3400-\u9FFF\uF900-\uFAFF])""")
         val ZERO_WIDTH_REGEX = Regex("""[\u200B-\u200D\uFEFF]""")
         val WHITESPACE_REGEX = Regex("""\s+""")
+        val CJK_BETWEEN_WHITESPACE_REGEX = Regex("""(?<=[\u3400-\u9FFF\uF900-\uFAFF])\s+(?=[\u3400-\u9FFF\uF900-\uFAFF])""")
         val SOFT_BREAK_REGEX = Regex("""[，,、；;：:]|\s+""")
         val QUOTE_ATTRIBUTION_REGEX = Regex("""^(?:他|她|他们|她们)(?:说|问|答|喊|叫|道)""")
         val ABBREVIATION_SUFFIX_REGEX = Regex(
@@ -367,6 +444,12 @@ class TtsTextProcessor {
         val INITIALISM_SUFFIX_REGEX = Regex("""(?i)(?:\b[A-Z]\.){2,}$""")
 
         val MARKDOWN_LINK_REGEX = Regex("""\[([^\]]+)]\((?:https?://|www\.)[^)]+\)""", RegexOption.IGNORE_CASE)
+        val NON_SPEECH_HTML_BLOCK_REGEX = Regex(
+            """<(script|style|noscript|template|rt|rp)\b[^>]*>.*?</\1\s*>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        )
+        val CDATA_REGEX = Regex("""<!\[CDATA\[(.*?)]]>""", RegexOption.DOT_MATCHES_ALL)
+        val MALFORMED_HTML_TAG_REGEX = Regex("""</?[A-Za-z][A-Za-z0-9:_-]*(?:\s+[^<>]*)?/?\s*$""")
         val HTML_ENTITY_REGEX = Regex("""&([a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);""")
         val MIMO_SQUARE_BRACKETS = setOf('[', ']', '［', '］', '【', '】', '〖', '〗', '〚', '〛')
         val MIMO_CHECKMARK_REGEX = Regex("[√✓✔☑]+")
@@ -380,12 +463,7 @@ class TtsTextProcessor {
         val MIMO_SPACE_AFTER_OPENER_REGEX = Regex("""([〖〔［])\s+""")
         val REPLACEMENT_CHARACTER_REGEX = Regex("""�""")
         val PRIVATE_USE_REGEX = Regex("""[\uE000-\uF8FF]""")
-        val HTML_TAG_NAMES = setOf(
-            "html", "head", "body", "title", "meta", "link", "style", "script", "p", "br", "div", "span",
-            "section", "article", "header", "footer", "main", "nav", "aside", "h1", "h2", "h3", "h4", "h5", "h6",
-            "ul", "ol", "li", "blockquote", "pre", "code", "em", "strong", "b", "i", "u", "s", "a", "img", "ruby",
-            "rt", "rp", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "hr", "audio", "video", "source",
-        )
+
         val HTML_ENTITIES = mapOf(
             "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to " ",
             "ndash" to "–", "mdash" to "—", "hellip" to "……", "ldquo" to "“", "rdquo" to "”",
