@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Book::class, Bookmark::class, DeletedBook::class, ReaderAnnotation::class, DeletedReaderAnnotation::class],
-    version = 7,
+    entities = [Book::class, Bookmark::class, DeletedBook::class, ReaderAnnotation::class, DeletedReaderAnnotation::class, ReadingSession::class],
+    version = 8,
     exportSchema = false,
 )
 abstract class YuraDatabase : RoomDatabase() {
@@ -32,6 +32,7 @@ abstract class YuraDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_4_5)
                     .addMigrations(MIGRATION_5_6)
                     .addMigrations(MIGRATION_6_7)
+                    .addMigrations(MIGRATION_7_8)
                     .build()
                     .also { instance = it }
             }
@@ -79,6 +80,35 @@ abstract class YuraDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.CHAPTER_TITLE} TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE ${ReaderAnnotation.TABLE_NAME} ADD COLUMN ${ReaderAnnotation.CHAPTER_HREF} TEXT NOT NULL DEFAULT ''")
                 db.execSQL("UPDATE ${ReaderAnnotation.TABLE_NAME} SET ${ReaderAnnotation.UPDATED_AT} = ${ReaderAnnotation.CREATED_AT} WHERE ${ReaderAnnotation.UPDATED_AT} = 0")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS ${ReadingSession.TABLE_NAME} (" +
+                        "${ReadingSession.ID} TEXT NOT NULL, " +
+                        "${ReadingSession.BOOK_IDENTIFIER} TEXT NOT NULL, " +
+                        "${ReadingSession.MODE} TEXT NOT NULL, " +
+                        "${ReadingSession.STARTED_AT} INTEGER NOT NULL, " +
+                        "${ReadingSession.ENDED_AT} INTEGER NOT NULL, " +
+                        "${ReadingSession.DURATION_MS} INTEGER NOT NULL, " +
+                        "${ReadingSession.UPDATED_AT} INTEGER NOT NULL, " +
+                        "PRIMARY KEY(${ReadingSession.ID})" +
+                        ")",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_${ReadingSession.TABLE_NAME}_${ReadingSession.BOOK_IDENTIFIER} " +
+                        "ON ${ReadingSession.TABLE_NAME} (${ReadingSession.BOOK_IDENTIFIER})",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_${ReadingSession.TABLE_NAME}_${ReadingSession.STARTED_AT} " +
+                        "ON ${ReadingSession.TABLE_NAME} (${ReadingSession.STARTED_AT})",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_${ReadingSession.TABLE_NAME}_${ReadingSession.MODE} " +
+                        "ON ${ReadingSession.TABLE_NAME} (${ReadingSession.MODE})",
+                )
             }
         }
     }

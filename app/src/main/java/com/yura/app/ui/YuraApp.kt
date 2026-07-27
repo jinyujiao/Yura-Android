@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -86,6 +88,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,6 +101,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
 import com.yura.app.ui.icons.YuraIcons
+import com.yura.app.ui.theme.YuraMotion
 import com.yura.app.ui.notes.NotesScreen
 import com.yura.app.library.LibraryUiState
 import com.yura.app.notes.NotesViewModel
@@ -114,6 +118,7 @@ import com.yura.app.sync.WebDavClient
 import com.yura.app.ui.shelf.LibraryScreen
 import com.yura.app.ui.shelf.LibraryTopBar
 import com.yura.app.ui.settings.SettingsHubScreen
+import com.yura.app.ui.stats.ReadingStatsScreen
 import com.yura.app.ui.shelf.ShelfSort
 import com.yura.app.ui.shelf.ShelfBookFilter
 import com.yura.app.sync.WebDavSettings
@@ -134,6 +139,7 @@ import org.readium.r2.navigator.preferences.Theme
 
 private enum class RootTab(val label: String, val icon: ImageVector) {
     Library("书架", YuraIcons.Library),
+    Stats("统计", YuraIcons.Stats),
     Notes("笔记", YuraIcons.Note),
     Settings("设置", YuraIcons.Settings),
 }
@@ -265,8 +271,9 @@ fun YuraApp(
                         Text(
                             text = notesBook?.title ?: tab.label,
                             style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Black,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     },
                     navigationIcon = {
@@ -327,6 +334,14 @@ fun YuraApp(
                                     coverTargetBook = book
                                     coverLauncher.launch(arrayOf("image/*"))
                                 },
+                                onImport = {
+                                    importLauncher.launch(arrayOf(
+                                        "application/epub+zip",
+                                        "text/plain",
+                                        "application/octet-stream",
+                                        "application/zip",
+                                    ))
+                                },
                             )
                             RootTab.Notes -> NotesScreen(
                                 state = notesState,
@@ -346,6 +361,7 @@ fun YuraApp(
                                     correctionExportLauncher.launch("${sanitizeExportFileName(book.title)}-修订版.epub")
                                 },
                             )
+                            RootTab.Stats -> ReadingStatsScreen()
                             RootTab.Settings -> SettingsHubScreen(
                                 ttsController = ttsController,
                                 active = tab == item,
@@ -382,14 +398,14 @@ private fun FloatingPillNavigation(
     Surface(
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 12.dp,
+        shadowElevation = 8.dp,
         shape = glassShape,
         modifier = modifier
-            .fillMaxWidth(0.78f)
-            .widthIn(max = 340.dp)
-            .height(64.dp),
+            .fillMaxWidth(0.9f)
+            .widthIn(max = 420.dp)
+            .heightIn(min = 62.dp),
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .hazeEffect(
                     state = hazeState,
@@ -398,15 +414,18 @@ private fun FloatingPillNavigation(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.44f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
                         ),
                     ),
                 )
                 .padding(6.dp),
         ) {
+            val stackedItems = maxWidth < 340.dp || LocalDensity.current.fontScale >= 1.3f
             Row(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 50.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -414,10 +433,11 @@ private fun FloatingPillNavigation(
                     val isSelected = selected == item
                     val indicatorColor by animateColorAsState(
                         targetValue = if (isSelected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                         } else {
                             Color.Transparent
                         },
+                        animationSpec = tween(YuraMotion.standard),
                         label = "glass-tab-indicator",
                     )
                     val iconColor by animateColorAsState(
@@ -426,6 +446,7 @@ private fun FloatingPillNavigation(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
                         },
+                        animationSpec = tween(YuraMotion.standard),
                         label = "glass-tab-icon",
                     )
                     val labelColor by animateColorAsState(
@@ -434,6 +455,7 @@ private fun FloatingPillNavigation(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
                         },
+                        animationSpec = tween(YuraMotion.standard),
                         label = "glass-tab-label",
                     )
                     Surface(
@@ -443,34 +465,67 @@ private fun FloatingPillNavigation(
                         contentColor = iconColor,
                         shape = glassShape,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .height(52.dp)
-                                .padding(horizontal = 10.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
+                        if (stackedItems) {
+                            Column(
                                 modifier = Modifier
-                                    .size(34.dp)
-                                    .background(indicatorColor, CircleShape),
-                                contentAlignment = Alignment.Center,
+                                    .heightIn(min = 50.dp)
+                                    .padding(horizontal = 2.dp, vertical = 3.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
                             ) {
-                                Icon(
-                                    imageVector = item.icon,
-                                    contentDescription = item.label,
-                                    tint = iconColor,
-                                    modifier = Modifier.size(21.dp),
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(indicatorColor, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = item.icon,
+                                        contentDescription = item.label,
+                                        tint = iconColor,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                Text(
+                                    item.label,
+                                    color = labelColor,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                item.label,
-                                color = labelColor,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1,
-                            )
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 52.dp)
+                                    .padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(indicatorColor, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = item.icon,
+                                        contentDescription = item.label,
+                                        tint = iconColor,
+                                        modifier = Modifier.size(19.dp),
+                                    )
+                                }
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    item.label,
+                                    color = labelColor,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
@@ -486,22 +541,22 @@ private fun YuraSnackbar(data: SnackbarData) {
         listOf("失败", "无法", "错误", "异常").any { message.contains(it) }
     }
     val containerColor = if (isError) {
-        MaterialTheme.colorScheme.tertiaryContainer
+        MaterialTheme.colorScheme.errorContainer
     } else {
         MaterialTheme.colorScheme.primaryContainer
     }
     val contentColor = if (isError) {
-        MaterialTheme.colorScheme.onTertiaryContainer
+        MaterialTheme.colorScheme.onErrorContainer
     } else {
         MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     Surface(
-        shape = RoundedCornerShape(22.dp),
+        shape = MaterialTheme.shapes.large,
         color = containerColor,
         contentColor = contentColor,
         tonalElevation = 4.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 6.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -516,10 +571,10 @@ private fun YuraSnackbar(data: SnackbarData) {
                 modifier = Modifier.size(28.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = if (isError) "!" else "\u2713",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Black,
+                    Icon(
+                        imageVector = if (isError) YuraIcons.Warning else YuraIcons.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
                     )
                 }
             }

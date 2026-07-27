@@ -77,7 +77,7 @@ fun ReaderSettingsSheet(
         sheetGesturesEnabled = true,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        shape = com.yura.app.ui.theme.YuraBottomSheetShape,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -90,11 +90,7 @@ fun ReaderSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
-                Text(
-                    "阅读设置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                )
+                com.yura.app.ui.components.YuraBottomSheetTitle("阅读设置")
             }
 
             item {
@@ -317,19 +313,7 @@ private fun PreferenceCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            PreferenceSectionTitle(title)
-            content()
-        }
-    }
+    com.yura.app.ui.components.YuraPreferenceCard(title = title, content = content)
 }
 
 @Composable
@@ -342,37 +326,25 @@ private fun PreferenceSlider(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: (Float) -> Unit,
 ) {
-    var sliderValue by remember(value) { mutableFloatStateOf(value) }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(
-                when (title) {
-                    "字号" -> "${(sliderValue * 100).toInt()}%"
-                    "行高" -> String.format(Locale.ROOT, "%.1f", sliderValue)
-                    "段首缩进" -> "${sliderValue.roundToInt()} 字"
-                    "段间距", "字间距" -> "${(sliderValue * 100).toInt()}%"
-                    else -> valueLabel
-                },
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Slider(
-            value = sliderValue,
-            onValueChange = { value ->
-                sliderValue = value
-                onValueChange(value)
-            },
-            onValueChangeFinished = { onValueChangeFinished(sliderValue) },
-            valueRange = valueRange,
-            steps = steps,
-        )
-    }
+    com.yura.app.ui.components.YuraPreferenceSlider(
+        title = title,
+        valueLabel = valueLabel,
+        value = value,
+        valueRange = valueRange,
+        steps = steps,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        contentPadding = PaddingValues(0.dp),
+        valueFormatter = { sliderValue ->
+            when (title) {
+                "字号" -> "${(sliderValue * 100).toInt()}%"
+                "行高" -> String.format(Locale.ROOT, "%.1f", sliderValue)
+                "段首缩进" -> "${sliderValue.roundToInt()} 字"
+                "段间距", "字间距" -> "${(sliderValue * 100).toInt()}%"
+                else -> valueLabel
+            }
+        },
+    )
 }
 
 @Composable
@@ -382,20 +354,13 @@ private fun PreferenceSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
+    com.yura.app.ui.components.YuraPreferenceSwitch(
+        title = title,
+        subtitle = subtitle,
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        contentPadding = PaddingValues(0.dp),
+    )
 }
 
 @Composable
@@ -404,29 +369,7 @@ fun PreferenceChoice(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    TextButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.background(
-            color = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f)
-            },
-            shape = RoundedCornerShape(18.dp),
-        ),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-    ) {
-        Text(
-            text,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-        )
-    }
+    com.yura.app.ui.components.YuraPreferenceChoice(text, selected, onClick)
 }
 
 @Composable
@@ -434,7 +377,7 @@ private fun PreferenceSectionTitle(title: String) {
     Text(
         title,
         style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

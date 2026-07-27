@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.yura.app.data.Book
 import com.yura.app.library.LibraryUiState
+import com.yura.app.ui.components.YuraEmptyState
+import com.yura.app.ui.icons.YuraIcons
 import java.io.File
 import org.json.JSONObject
 
@@ -67,6 +71,7 @@ fun LibraryScreen(
     onRemoveFromDevice: (List<Book>) -> Unit,
     onDeleteEverywhere: (List<Book>) -> Unit,
     onChangeCover: (Book) -> Unit,
+    onImport: () -> Unit,
 ) {
     var selectedBookIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var deleteAction by remember { mutableStateOf<ShelfDeleteAction?>(null) }
@@ -132,20 +137,17 @@ fun LibraryScreen(
         ) {
             if (state.isImporting) item(span = { GridItemSpan(maxLineSpan) }) { ImportStatusBanner() }
             if (state.isLoading) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-                    }
-                }
+                items(6) { ShelfLoadingCard() }
             } else if (state.books.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibraryCard() }
+                item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibraryCard(onImport) }
             } else if (sortedBooks.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(150.dp)) {
-                        Box(modifier = Modifier.padding(20.dp), contentAlignment = Alignment.Center) {
-                            Text("没有符合条件的书籍", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                    YuraEmptyState(
+                        icon = YuraIcons.Search,
+                        title = "没有符合条件的书籍",
+                        description = "换一个关键词，或者调整当前排序方式。",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
             items(sortedBooks, key = { it.id }) { book ->
@@ -197,9 +199,9 @@ private fun ShelfSelectionBar(
                 )
             }
         }
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ShelfActionButton(text = "移除本机", onClick = onRemoveFromDevice)
             ShelfActionButton(text = "全设备删除", onClick = onDeleteEverywhere)
@@ -227,19 +229,45 @@ private fun ShelfActionButton(
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
             color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun EmptyLibraryCard() {
-    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.height(180.dp)) {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text("书架还是空的", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("点击右上角 + 导入本地 EPUB。", color = MaterialTheme.colorScheme.onPrimaryContainer)
-        }
+private fun EmptyLibraryCard(onImport: () -> Unit) {
+    YuraEmptyState(
+        icon = YuraIcons.Library,
+        title = "书架还是空的",
+        description = "导入本地 EPUB 或 TXT，开始你的阅读。",
+        actionLabel = "导入书籍",
+        onAction = onImport,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun ShelfLoadingCard() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.68f),
+        ) {}
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth(0.78f).height(16.dp),
+        ) {}
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(0.52f).height(12.dp),
+        ) {}
     }
 }
 
@@ -288,18 +316,18 @@ private fun ShelfBookCard(
     ) {
         Box {
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
-                shadowElevation = 8.dp,
-                border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+                tonalElevation = 1.dp,
+                shadowElevation = 3.dp,
+                border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                 modifier = Modifier.fillMaxWidth().aspectRatio(0.68f),
             ) {
                 AsyncImage(
                     model = File(book.cover),
                     contentDescription = book.title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
+                    modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.medium),
                 )
             }
             if (selected) {
@@ -308,11 +336,15 @@ private fun ShelfBookCard(
                     color = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
-                ) { Box(contentAlignment = Alignment.Center) { Text("✓", fontWeight = FontWeight.Black) } }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(YuraIcons.Check, contentDescription = "已选择", modifier = Modifier.size(18.dp))
+                    }
+                }
             }
         }
         Spacer(Modifier.height(11.dp))
-        Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
+        Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(book.author.ifBlank { "未知作者" }, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

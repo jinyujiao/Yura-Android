@@ -3,6 +3,7 @@ package com.yura.app.ui.notes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +46,7 @@ import com.yura.app.data.Book
 import com.yura.app.data.ReaderAnnotation
 import com.yura.app.notes.BookAnnotationGroup
 import com.yura.app.notes.NotesUiState
+import com.yura.app.ui.components.YuraEmptyState
 import com.yura.app.ui.icons.YuraIcons
 import java.io.File
 import java.text.DateFormat
@@ -73,9 +78,7 @@ fun NotesScreen(
     }
 
     when {
-        state.isLoading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        state.isLoading -> NotesLoadingState(modifier)
         selectedGroup != null -> BookAnnotationsDetail(
             group = selectedGroup,
             onDeleteAnnotation = onDeleteAnnotation,
@@ -96,24 +99,26 @@ private fun NotesOverview(
 ) {
     if (groups.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(YuraIcons.Note, contentDescription = null, modifier = Modifier.size(30.dp))
-                Text("还没有笔记", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("阅读时长按文字，可以添加笔记、高亮或修订。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            YuraEmptyState(
+                icon = YuraIcons.Note,
+                title = "还没有笔记",
+                description = "阅读时长按文字，可以添加笔记、高亮或修订。",
+                modifier = Modifier.widthIn(max = 420.dp),
+            )
         }
         return
     }
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 104.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(groups, key = { it.book.id }) { group ->
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 104.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(groups, key = { it.book.id }) { group ->
             Surface(
                 onClick = { onSelectBook(group.book.id) },
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
@@ -125,19 +130,41 @@ private fun NotesOverview(
                         model = group.book.cover.takeIf(String::isNotBlank)?.let(::File),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(58.dp).height(78.dp),
+                        modifier = Modifier.width(58.dp).height(78.dp).clip(MaterialTheme.shapes.small),
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(group.book.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            CountBadge("笔记 ${group.noteCount}")
-                            CountBadge("高亮 ${group.highlightCount}")
-                            if (group.correctionCount > 0) CountBadge("修订 ${group.correctionCount}")
+                        Text(group.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            CountBadge("笔记 ${group.noteCount}", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                            CountBadge("高亮 ${group.highlightCount}", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                            if (group.correctionCount > 0) {
+                                CountBadge("修订 ${group.correctionCount}", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                            }
                         }
                     }
                     Icon(YuraIcons.ChevronRight, contentDescription = "查看笔记")
                 }
             }
+        }
+    }
+    }
+}
+
+@Composable
+private fun NotesLoadingState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        repeat(4) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth().height(106.dp),
+            ) {}
         }
     }
 }
@@ -164,14 +191,18 @@ private fun BookAnnotationsDetail(
         }
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 104.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 104.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     AnnotationFilter.entries.forEach { item ->
                         FilterChip(selected = filter == item, onClick = { filter = item }, label = { Text(item.label) })
                     }
@@ -224,6 +255,7 @@ private fun BookAnnotationsDetail(
                 )
             }
         }
+        }
     }
 
     pendingDelete?.let { annotation ->
@@ -254,6 +286,7 @@ private fun BookAnnotationsDetail(
                         value = editDraft,
                         onValueChange = { editDraft = it.take(500) },
                         label = { Text("修订为") },
+                        placeholder = { Text("留空表示删除原文") },
                         minLines = 2,
                         maxLines = 7,
                     )
@@ -261,7 +294,7 @@ private fun BookAnnotationsDetail(
             },
             confirmButton = {
                 TextButton(
-                    enabled = editDraft.isNotBlank() && editDraft.trim() != annotation.note.trim(),
+                    enabled = editDraft.trim() != annotation.note.trim(),
                     onClick = { pendingEdit = null; onUpdateCorrection(annotation, editDraft) },
                 ) { Text("保存") }
             },
@@ -280,8 +313,12 @@ private fun AnnotationCard(
     val isCorrection = annotation.type == ReaderAnnotation.TYPE_CORRECTION
     val original = annotation.locator?.text?.highlight.orEmpty().trim()
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        shape = RoundedCornerShape(22.dp),
+        color = when (annotation.type) {
+            ReaderAnnotation.TYPE_NOTE -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+            ReaderAnnotation.TYPE_CORRECTION -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.44f)
+            else -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.44f)
+        },
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -293,13 +330,28 @@ private fun AnnotationCard(
                         else -> YuraIcons.Highlight
                     },
                     contentDescription = null,
+                    tint = when (annotation.type) {
+                        ReaderAnnotation.TYPE_NOTE -> MaterialTheme.colorScheme.primary
+                        ReaderAnnotation.TYPE_CORRECTION -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.secondary
+                    },
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(annotationTypeLabel(annotation), fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                Text(formatAnnotationTime(annotation.updatedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = onDelete, modifier = Modifier.size(38.dp)) {
+                Text(
+                    annotationTypeLabel(annotation),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    formatAnnotationTime(annotation.updatedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                     Icon(YuraIcons.Delete, contentDescription = "删除", modifier = Modifier.size(20.dp))
                 }
             }
@@ -310,7 +362,7 @@ private fun AnnotationCard(
                 fontWeight = FontWeight.SemiBold,
             )
             if (original.isNotBlank()) {
-                Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), shape = RoundedCornerShape(14.dp)) {
+                Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), shape = MaterialTheme.shapes.small) {
                     Text(original, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                 }
             }
@@ -319,9 +371,12 @@ private fun AnnotationCard(
             }
             if (isCorrection) {
                 Text("修订为", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(annotation.note, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                Text(annotation.note.ifBlank { "删除原文" }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 TextButton(onClick = onOpen, enabled = annotation.locator != null) {
                     Icon(YuraIcons.View, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
@@ -340,8 +395,8 @@ private fun AnnotationCard(
 }
 
 @Composable
-private fun CountBadge(text: String) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f), shape = RoundedCornerShape(999.dp)) {
+private fun CountBadge(text: String, containerColor: Color, contentColor: Color) {
+    Surface(color = containerColor.copy(alpha = 0.72f), contentColor = contentColor, shape = MaterialTheme.shapes.small) {
         Text(text, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
     }
 }

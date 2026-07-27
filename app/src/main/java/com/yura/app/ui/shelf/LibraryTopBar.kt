@@ -2,6 +2,7 @@ package com.yura.app.ui.shelf
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,55 +52,62 @@ fun LibraryTopBar(
 ) {
     TopAppBar(
         title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = "Yura",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                )
-                if (importing && importTotal > 1 && !searchExpanded) {
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val compactTitle = maxWidth < 170.dp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (compactTitle) 8.dp else 12.dp),
+                ) {
+                    if (!searchExpanded || !compactTitle) {
                         Text(
-                            text = "导入 $importCompleted/$importTotal",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "Yura",
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
                         )
                     }
-                }
-                if (searchExpanded) {
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = onSearchQueryChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = {
-                                Text(
-                                    text = "搜索书名或作者",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            textStyle = MaterialTheme.typography.bodyMedium,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent,
-                            ),
-                        )
+                    if (importing && importTotal > 1 && !searchExpanded) {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ) {
+                            Text(
+                                text = if (compactTitle) "$importCompleted/$importTotal" else "导入 $importCompleted/$importTotal",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    if (searchExpanded) {
+                        Surface(
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = onSearchQueryChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                placeholder = {
+                                    Text(
+                                        text = "搜索书名或作者",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.Transparent,
+                                    unfocusedBorderColor = Color.Transparent,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -119,32 +127,32 @@ fun LibraryTopBar(
                 DropdownMenu(
                     expanded = sortMenuVisible,
                     onDismissRequest = { onSortMenuVisibleChange(false) },
-                    shape = RoundedCornerShape(24.dp),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
-                    tonalElevation = 8.dp,
-                    shadowElevation = 14.dp,
+                    shape = MaterialTheme.shapes.large,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 6.dp,
                     modifier = Modifier.width(176.dp),
                 ) {
                     Text(
                         text = "书架排序",
                         modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     ShelfSort.entries.forEach { option ->
                         val selected = sort == option
                         DropdownMenuItem(
                             text = {
                                 Surface(
-                                    shape = RoundedCornerShape(999.dp),
-                                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                 ) {
                                     Text(
                                         text = option.label,
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             },

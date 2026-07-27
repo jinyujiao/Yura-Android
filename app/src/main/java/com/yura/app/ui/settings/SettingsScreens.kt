@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -46,6 +48,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -176,29 +179,31 @@ fun SettingsHubScreen(
 
 @Composable
 private fun SettingsHome(onOpen: (SettingsDetail) -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            SettingsEntryRow("朗读设置", "云端语音、音色、API Key 和测试朗读", YuraIcons.ReadAloud) {
-                onOpen(SettingsDetail.Tts)
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                SettingsEntryRow("朗读设置", "云端语音、音色、API Key 和测试朗读", YuraIcons.ReadAloud) {
+                    onOpen(SettingsDetail.Tts)
+                }
             }
-        }
-        item {
-            SettingsEntryRow("阅读设置", "字号、行高、段间距、缩进、字间距和版式", YuraIcons.Font) {
-                onOpen(SettingsDetail.Reading)
+            item {
+                SettingsEntryRow("阅读设置", "字号、行高、段间距、缩进、字间距和版式", YuraIcons.Font) {
+                    onOpen(SettingsDetail.Reading)
+                }
             }
-        }
-        item {
-            SettingsEntryRow("同步设置", "WebDAV", YuraIcons.Sync) {
-                onOpen(SettingsDetail.WebDav)
+            item {
+                SettingsEntryRow("同步设置", "WebDAV", YuraIcons.Sync) {
+                    onOpen(SettingsDetail.WebDav)
+                }
             }
-        }
-        item {
-            SettingsEntryRow("关于", "版本和项目信息", YuraIcons.Info) {
-                onOpen(SettingsDetail.About)
+            item {
+                SettingsEntryRow("关于", "版本和项目信息", YuraIcons.Info) {
+                    onOpen(SettingsDetail.About)
+                }
             }
         }
     }
@@ -210,22 +215,25 @@ private fun SettingsDetailScaffold(
     onBack: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 760.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            IconButton(onClick = onBack) {
-                Text("\u2039", style = MaterialTheme.typography.headlineMedium)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(YuraIcons.Back, contentDescription = "返回")
+                }
+                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
         }
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
     }
 }
 
@@ -238,25 +246,14 @@ fun AppPreferenceSlider(
     steps: Int,
     onValueChange: (Float) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(valueLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
-        )
-    }
+    com.yura.app.ui.components.YuraPreferenceSlider(
+        title = title,
+        valueLabel = valueLabel,
+        value = value,
+        valueRange = valueRange,
+        steps = steps,
+        onValueChange = onValueChange,
+    )
 }
 
 @Composable
@@ -266,22 +263,7 @@ fun AppPreferenceSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
+    com.yura.app.ui.components.YuraPreferenceSwitch(title, subtitle, checked, onCheckedChange)
 }
 
 @Composable
@@ -289,22 +271,9 @@ fun AppPreferenceChoice(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    TextButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.background(
-            color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-            shape = RoundedCornerShape(18.dp),
-        ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Text(
-            text,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-        )
-    }
+    com.yura.app.ui.components.YuraPreferenceChoice(text, selected, onClick, modifier)
 }
 
 data class PreferenceOption(
@@ -315,16 +284,33 @@ data class PreferenceOption(
 
 @Composable
 fun AppPreferenceChoiceRow(choices: List<PreferenceOption>) {
-    Row(
-        modifier = Modifier.padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    if (choices.isEmpty()) return
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
     ) {
-        choices.forEach { choice ->
-            AppPreferenceChoice(
-                text = choice.text,
-                selected = choice.selected,
-                onClick = choice.onClick,
-            )
+        val spacing = 8.dp
+        val columns = when {
+            maxWidth >= 104.dp * choices.size -> choices.size
+            maxWidth >= 200.dp -> minOf(2, choices.size)
+            else -> 1
+        }
+        val itemWidth = (maxWidth - spacing * (columns - 1)) / columns
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalArrangement = Arrangement.spacedBy(spacing),
+            maxItemsInEachRow = columns,
+        ) {
+            choices.forEach { choice ->
+                AppPreferenceChoice(
+                    text = choice.text,
+                    selected = choice.selected,
+                    onClick = choice.onClick,
+                    modifier = Modifier.width(itemWidth),
+                )
+            }
         }
     }
 }
@@ -334,22 +320,7 @@ fun roundToStep(value: Float, step: Float): Double =
 
 @Composable
 fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            title,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(content = content)
-        }
-    }
+    com.yura.app.ui.components.YuraSettingsGroup(title = title, content = content)
 }
 
 @Composable
@@ -433,8 +404,8 @@ fun SettingsTextField(
 @Composable
 fun SettingsInfoCard(text: String) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(

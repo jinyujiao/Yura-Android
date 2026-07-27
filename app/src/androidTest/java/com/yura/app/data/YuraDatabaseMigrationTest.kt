@@ -81,4 +81,29 @@ class YuraDatabaseMigrationTest {
         }
         helper.close()
     }
+
+    @Test
+    fun migration7To8CreatesReadingSessionsTable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(null)
+                .callback(object : SupportSQLiteOpenHelper.Callback(7) {
+                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+                    override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build(),
+        )
+        val database = helper.writableDatabase
+
+        YuraDatabase.MIGRATION_7_8.migrate(database)
+
+        database.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reading_sessions'").use { cursor ->
+            assertEquals(1, cursor.count)
+        }
+        database.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'index_reading_sessions_book_identifier'").use { cursor ->
+            assertEquals(1, cursor.count)
+        }
+        helper.close()
+    }
 }

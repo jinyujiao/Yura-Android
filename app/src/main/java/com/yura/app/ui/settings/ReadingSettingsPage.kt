@@ -246,20 +246,19 @@ fun ReadingSettingsPage(
                     onCheckedChange = { checked -> onPreferencesChange(preferences.copy(publisherStyles = checked)) },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AppPreferenceChoice("自动", preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO) {
-                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false, publisherStyles = false))
-                    }
-                    AppPreferenceChoice("单栏", preferences.columnCount == ColumnCount.ONE) {
-                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false, publisherStyles = false))
-                    }
-                    AppPreferenceChoice("双栏", preferences.columnCount == ColumnCount.TWO) {
-                        onPreferencesChange(preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false, publisherStyles = false))
-                    }
-                }
+                AppPreferenceChoiceRow(
+                    choices = listOf(
+                        PreferenceOption("自动", preferences.columnCount == null || preferences.columnCount == ColumnCount.AUTO) {
+                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.AUTO, spread = Spread.NEVER, scroll = false, publisherStyles = false))
+                        },
+                        PreferenceOption("单栏", preferences.columnCount == ColumnCount.ONE) {
+                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.ONE, spread = Spread.NEVER, scroll = false, publisherStyles = false))
+                        },
+                        PreferenceOption("双栏", preferences.columnCount == ColumnCount.TWO) {
+                            onPreferencesChange(preferences.copy(columnCount = ColumnCount.TWO, spread = Spread.ALWAYS, scroll = false, publisherStyles = false))
+                        },
+                    ),
+                )
             }
         }
     }

@@ -175,7 +175,7 @@ fun WebDavSettingsPage() {
                             Text(if (syncing) "同步中" else "立即同步")
                         }
                         Text(
-                            text = syncMessage ?: "同步书籍、阅读进度、笔记和高亮。",
+                            text = syncMessage ?: "同步书籍、阅读进度、笔记、高亮和阅读统计。",
                             color = when {
                                 syncMessage == null -> MaterialTheme.colorScheme.onSurfaceVariant
                                 syncOk -> MaterialTheme.colorScheme.primary
@@ -204,7 +204,7 @@ fun WebDavSettingsPage() {
             SettingsGroup(title = "\u540c\u6b65\u670d\u52a1") {
                 AppPreferenceSwitch(
                     title = "\u542f\u7528 WebDAV",
-                    subtitle = "开启后可同步书籍、阅读进度、笔记和高亮",
+                    subtitle = "开启后可同步书籍、阅读进度、笔记、高亮和阅读统计",
                     checked = settings.enabled,
                     onCheckedChange = { update(settings.copy(enabled = it)) },
                 )

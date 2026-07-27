@@ -28,7 +28,7 @@ internal object CorrectionTextReplacer {
 
         val fullText = buildString { textNodes.forEach { append(it.wholeText) } }
         val ranges = corrections.mapNotNull { correction ->
-            if (correction.original.isBlank() || correction.replacement.isBlank()) return@mapNotNull null
+            if (correction.original.isBlank()) return@mapNotNull null
             locate(fullText, correction.original, correction.before, correction.after)
                 ?.let { range -> LocatedCorrection(correction.id, range.first, range.last + 1, correction.replacement) }
         }.sortedByDescending(LocatedCorrection::start)

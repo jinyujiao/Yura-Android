@@ -59,7 +59,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateCorrection(annotation: ReaderAnnotation, replacement: String) {
         val value = replacement.trim()
-        if (annotation.type != ReaderAnnotation.TYPE_CORRECTION || value.isBlank()) return
+        if (annotation.type != ReaderAnnotation.TYPE_CORRECTION) return
         viewModelScope.launch {
             dao.upsertAnnotation(annotation.copy(note = value, updatedAt = System.currentTimeMillis()))
             message.value = "修订已更新"

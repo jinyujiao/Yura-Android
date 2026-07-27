@@ -44,7 +44,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -95,6 +94,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.yura.app.data.Book
 import com.yura.app.data.YuraDatabase
+import com.yura.app.YuraApplication
 import com.yura.app.library.ReadiumServices
 import com.yura.tts.android.MediaService
 import com.yura.app.ui.theme.YuraTheme
@@ -102,6 +102,7 @@ import com.yura.app.util.applyDeviceOrientationPolicy
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -152,7 +153,11 @@ class ReaderActivity : FragmentActivity() {
     private var pendingForegroundTtsParagraphIndex = -1
     private var ttsStartRequestId = 0L
     private var ttsStartPending = false
+    private var readingStatsResumeJob: Job? = null
     private val ttsController by lazy { MediaService.controller(applicationContext) }
+    private val readingStats by lazy {
+        (application as YuraApplication).readingStatsCoordinator
+    }
     private val systemBarsController by lazy { ReaderSystemBarsController(window) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -198,6 +203,12 @@ class ReaderActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         readerForeground = true
+        readingStatsResumeJob?.cancel()
+        readingStatsResumeJob = lifecycleScope.launch {
+            dao.book(activeBookId)?.let { book ->
+                readingStats.onReaderResumed(book, previewMode)
+            }
+        }
         pendingForegroundTtsLocator?.let { locator ->
             pendingForegroundTtsLocator = null
             if (displayedReadingOrderIndex == activeTtsReadingOrderIndex) {
@@ -219,11 +230,15 @@ class ReaderActivity : FragmentActivity() {
 
     override fun onPause() {
         readerForeground = false
+        readingStatsResumeJob?.cancel()
+        readingStatsResumeJob = null
+        readingStats.onReaderPaused()
         if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flush()
         super.onPause()
     }
 
     override fun onDestroy() {
+        readingStats.onReaderDestroyed()
         if (ReaderProgressPersistencePolicy.shouldPersist(previewMode)) progressionSaver.flushBlocking()
         invalidatePendingTtsStart()
         ttsController.onParagraphChanged = null
@@ -265,6 +280,16 @@ class ReaderActivity : FragmentActivity() {
             ttsUiState.state == TtsState.PAUSED
         activeReaderPreferences = effectiveReaderPreferences
 
+        LaunchedEffect(settingsVisible, ttsVisible, tocVisible, pendingNoteLocator, pendingCorrectionLocator) {
+            readingStats.onReaderOverlayChanged(
+                settingsVisible ||
+                    ttsVisible ||
+                    tocVisible ||
+                    pendingNoteLocator != null ||
+                    pendingCorrectionLocator != null,
+            )
+        }
+
         DisposableEffect(Unit) {
             showControlsCallback = {
                 controlsVisible = !controlsVisible
@@ -274,7 +299,7 @@ class ReaderActivity : FragmentActivity() {
                 pendingNoteLocator = locator
             }
             requestCorrectionCallback = { locator ->
-                correctionDraft = locator.text.highlight.orEmpty()
+                correctionDraft = ""
                 pendingCorrectionLocator = locator
             }
             onDispose {
@@ -358,6 +383,7 @@ class ReaderActivity : FragmentActivity() {
                         }
                     },
                     onPageChanged = { page, total, locator ->
+                        readingStats.onReaderInteraction()
                         currentLocator = locator
                         displayedReadingOrderIndex = currentReadingOrderIndex(current.publication, locator)
                         currentPage = page + 1
@@ -410,8 +436,7 @@ class ReaderActivity : FragmentActivity() {
                     loadPosition = ::loadTtsFloatingPosition,
                     savePosition = ::saveTtsFloatingPosition,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .navigationBarsPadding(),
+                        .fillMaxSize(),
                 )
             }
             if (tocVisible && ready != null) {
@@ -517,6 +542,7 @@ class ReaderActivity : FragmentActivity() {
                                 onValueChange = { value -> correctionDraft = value.take(500) },
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text("修订为") },
+                                placeholder = { Text("留空表示删除所选文字") },
                                 minLines = 2,
                                 maxLines = 7,
                                 shape = RoundedCornerShape(18.dp),
@@ -530,7 +556,7 @@ class ReaderActivity : FragmentActivity() {
                     },
                     confirmButton = {
                         TextButton(
-                            enabled = correctionDraft.isNotBlank() && correctionDraft.trim() != originalText,
+                            enabled = correctionDraft.trim() != originalText,
                             onClick = {
                                 selectionActionModeCallback?.saveCorrection(locator, correctionDraft.trim())
                                 pendingCorrectionLocator = null

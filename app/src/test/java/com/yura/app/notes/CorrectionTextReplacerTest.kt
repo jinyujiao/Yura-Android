@@ -72,6 +72,23 @@ class CorrectionTextReplacerTest {
         assertTrue(result.appliedIds == setOf("4", "5"))
     }
 
+    @Test
+    fun removesSelectedTextWhenReplacementIsEmpty() {
+        val html = "<html><body><p>这段文字不需要保留。</p></body></html>"
+        val correction = correction(
+            id = "6",
+            before = "这段",
+            original = "文字",
+            after = "不需要",
+            replacement = "",
+        )
+
+        val result = CorrectionTextReplacer.apply(html, listOf(correction))
+
+        assertTrue(result.content.contains("这段不需要保留"))
+        assertTrue("6" in result.appliedIds)
+    }
+
     private fun correction(
         id: String,
         before: String,

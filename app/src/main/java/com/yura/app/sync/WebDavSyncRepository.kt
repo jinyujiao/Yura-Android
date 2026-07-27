@@ -5,6 +5,7 @@ import com.yura.app.data.Book
 import com.yura.app.data.DeletedBook
 import com.yura.app.data.DeletedReaderAnnotation
 import com.yura.app.data.ReaderAnnotation
+import com.yura.app.data.ReadingSession
 import com.yura.app.data.YuraDatabase
 import java.io.File
 import java.net.URI
@@ -21,6 +22,7 @@ data class WebDavSyncResult(
     val downloadedBooks: Int,
     val mergedProgress: Int,
     val mergedAnnotations: Int,
+    val mergedReadingSessions: Int,
 )
 
 class WebDavSyncRepository(context: Context) {
@@ -43,6 +45,7 @@ class WebDavSyncRepository(context: Context) {
                 val mergeResult = mergeRemote(remote)
                 val downloadedBooks = downloadMissingBooks(settings, remote)
                 val mergedAnnotations = mergeRemoteAnnotations(remote)
+                val mergedReadingSessions = mergeRemoteReadingSessions(remote)
                 val local = buildSnapshot()
                 val uploadedBooks = uploadLocalBooks(settings, local, remote)
                 client.putTextIfUnchanged(
@@ -58,6 +61,7 @@ class WebDavSyncRepository(context: Context) {
                     downloadedBooks = downloadedBooks,
                     mergedProgress = mergeResult.progressCount,
                     mergedAnnotations = mergedAnnotations,
+                    mergedReadingSessions = mergedReadingSessions,
                 )
             }
         }
@@ -229,6 +233,36 @@ class WebDavSyncRepository(context: Context) {
         return merged
     }
 
+    private suspend fun mergeRemoteReadingSessions(snapshot: SyncSnapshot): Int {
+        val localById = dao.allReadingSessions().associateBy { it.id }
+        var merged = 0
+        snapshot.readingSessions.forEach { remote ->
+            if (remote.id.isBlank() || remote.bookIdentifier.isBlank()) return@forEach
+            val local = localById[remote.id]
+            if (
+                !ReadingSessionSyncMergePolicy.shouldApplyRemote(
+                    localUpdatedAt = local?.updatedAt,
+                    localDurationMs = local?.durationMs,
+                    remoteUpdatedAt = remote.updatedAt,
+                    remoteDurationMs = remote.durationMs,
+                )
+            ) return@forEach
+            dao.upsertReadingSession(
+                ReadingSession(
+                    id = remote.id,
+                    bookIdentifier = remote.bookIdentifier,
+                    mode = remote.mode,
+                    startedAt = remote.startedAt,
+                    endedAt = remote.endedAt,
+                    durationMs = remote.durationMs,
+                    updatedAt = remote.updatedAt,
+                ),
+            )
+            merged++
+        }
+        return merged
+    }
+
     private suspend fun buildSnapshot(): SyncSnapshot {
         val tombstoneCutoff = System.currentTimeMillis() - TOMBSTONE_RETENTION_MS
         dao.deleteExpiredTombstones(tombstoneCutoff)
@@ -279,6 +313,17 @@ class WebDavSyncRepository(context: Context) {
             deletedAnnotations = dao.deletedReaderAnnotations().map {
                 SyncDeletedAnnotation(it.id, it.bookIdentifier, it.deletedAt)
             },
+            readingSessions = dao.allReadingSessions().map {
+                SyncReadingSession(
+                    id = it.id,
+                    bookIdentifier = it.bookIdentifier,
+                    mode = it.mode,
+                    startedAt = it.startedAt,
+                    endedAt = it.endedAt,
+                    durationMs = it.durationMs,
+                    updatedAt = it.updatedAt,
+                )
+            },
         )
     }
 
@@ -291,14 +336,16 @@ class WebDavSyncRepository(context: Context) {
         val deletedBooks: List<SyncDeletedBook> = emptyList(),
         val annotations: List<SyncAnnotation> = emptyList(),
         val deletedAnnotations: List<SyncDeletedAnnotation> = emptyList(),
+        val readingSessions: List<SyncReadingSession> = emptyList(),
     ) {
         fun toJson(): JSONObject =
             JSONObject()
-                .put("version", 5)
+                .put("version", 6)
                 .put("books", JSONArray().also { array -> books.forEach { array.put(it.toJson()) } })
                 .put("deletedBooks", JSONArray().also { array -> deletedBooks.forEach { array.put(it.toJson()) } })
                 .put("annotations", JSONArray().also { array -> annotations.forEach { array.put(it.toJson()) } })
                 .put("deletedAnnotations", JSONArray().also { array -> deletedAnnotations.forEach { array.put(it.toJson()) } })
+                .put("readingSessions", JSONArray().also { array -> readingSessions.forEach { array.put(it.toJson()) } })
 
         companion object {
             fun fromJson(json: JSONObject): SyncSnapshot =
@@ -315,7 +362,41 @@ class WebDavSyncRepository(context: Context) {
                     deletedAnnotations = json.optJSONArray("deletedAnnotations")?.let { array ->
                         List(array.length()) { SyncDeletedAnnotation.fromJson(array.getJSONObject(it)) }
                     }.orEmpty(),
+                    readingSessions = json.optJSONArray("readingSessions")?.let { array ->
+                        List(array.length()) { SyncReadingSession.fromJson(array.getJSONObject(it)) }
+                    }.orEmpty(),
                 )
+        }
+    }
+
+    private data class SyncReadingSession(
+        val id: String,
+        val bookIdentifier: String,
+        val mode: String,
+        val startedAt: Long,
+        val endedAt: Long,
+        val durationMs: Long,
+        val updatedAt: Long,
+    ) {
+        fun toJson(): JSONObject = JSONObject()
+            .put("id", id)
+            .put("bookIdentifier", bookIdentifier)
+            .put("mode", mode)
+            .put("startedAt", startedAt)
+            .put("endedAt", endedAt)
+            .put("durationMs", durationMs)
+            .put("updatedAt", updatedAt)
+
+        companion object {
+            fun fromJson(json: JSONObject): SyncReadingSession = SyncReadingSession(
+                id = json.optString("id"),
+                bookIdentifier = json.optString("bookIdentifier"),
+                mode = json.optString("mode").ifBlank { ReadingSession.MODE_READING },
+                startedAt = json.optLong("startedAt"),
+                endedAt = json.optLong("endedAt"),
+                durationMs = json.optLong("durationMs"),
+                updatedAt = json.optLong("updatedAt"),
+            )
         }
     }
 

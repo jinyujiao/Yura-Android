@@ -1,4 +1,5 @@
 const FRAGMENT_ATTRIBUTE = "data-readium-paragraph-fragment";
+const SELECTION_GUARD_ATTRIBUTE = "data-readium-selection-guard";
 
 class ParagraphFragmenter {
   constructor(window) {
@@ -9,6 +10,11 @@ class ParagraphFragmenter {
   }
 
   prepareForLayout() {
+    for (const guard of this.window.document.querySelectorAll(
+      `[${SELECTION_GUARD_ATTRIBUTE}]`
+    )) {
+      guard.remove();
+    }
     for (const fragmentation of this.fragmentations) {
       const firstFragment = fragmentation.fragments[0];
       if (firstFragment.isConnected) {
@@ -41,15 +47,25 @@ class ParagraphFragmenter {
       return;
     }
 
-    const paragraphs = Array.from(this.window.document.body.querySelectorAll("p"));
+    const paragraphs = Array.from(
+      this.window.document.body.querySelectorAll("p")
+    );
     for (const paragraph of paragraphs) {
       this.fragment(paragraph);
+      if (paragraph.isConnected) {
+        this.ensureSelectionGuard(paragraph);
+      }
     }
   }
 
   fragment(paragraph) {
+    if (paragraph.hasAttribute(FRAGMENT_ATTRIBUTE)) {
+      return;
+    }
+
+    paragraph.querySelector(`[${SELECTION_GUARD_ATTRIBUTE}]`)?.remove();
+
     if (
-      paragraph.hasAttribute(FRAGMENT_ATTRIBUTE) ||
       paragraph.childNodes.length !== 1 ||
       paragraph.firstChild?.nodeType !== Node.TEXT_NODE
     ) {
@@ -90,9 +106,29 @@ class ParagraphFragmenter {
     );
 
     paragraph.replaceWith(...fragments);
+    for (const fragment of fragments) {
+      this.ensureSelectionGuard(fragment);
+    }
     this.fragmentations.push({ original: paragraph, fragments });
   }
 
+  ensureSelectionGuard(paragraph) {
+    if (paragraph.querySelector(`[${SELECTION_GUARD_ATTRIBUTE}]`)) {
+      return;
+    }
+
+    const guard = this.window.document.createElement("span");
+    guard.setAttribute(SELECTION_GUARD_ATTRIBUTE, "");
+    guard.setAttribute("aria-hidden", "true");
+    guard.style.setProperty("display", "inline-block", "important");
+    guard.style.setProperty("width", "0", "important");
+    guard.style.setProperty("height", "1px", "important");
+    guard.style.setProperty("overflow", "hidden", "important");
+    guard.style.setProperty("pointer-events", "none", "important");
+    guard.style.setProperty("user-select", "none", "important");
+    guard.style.setProperty("-webkit-user-select", "none", "important");
+    paragraph.prepend(guard);
+  }
   isSupportedLayout() {
     if (!this.window.readium?.isReflowable) {
       return false;

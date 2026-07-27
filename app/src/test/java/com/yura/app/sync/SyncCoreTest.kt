@@ -56,4 +56,13 @@ class SyncCoreTest {
         assertFalse(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = 100, remoteDeletedAt = 100))
         assertFalse(AnnotationSyncMergePolicy.shouldApplyRemoteDeletion(localDeletedAt = null, remoteDeletedAt = 0))
     }
+
+    @Test
+    fun readingSessionMergeKeepsNewestCheckpoint() {
+        assertTrue(ReadingSessionSyncMergePolicy.shouldApplyRemote(null, null, 100, 10_000))
+        assertTrue(ReadingSessionSyncMergePolicy.shouldApplyRemote(100, 8_000, 100, 10_000))
+        assertTrue(ReadingSessionSyncMergePolicy.shouldApplyRemote(100, 10_000, 110, 10_000))
+        assertFalse(ReadingSessionSyncMergePolicy.shouldApplyRemote(110, 10_000, 100, 12_000))
+        assertFalse(ReadingSessionSyncMergePolicy.shouldApplyRemote(100, 10_000, 100, 9_000))
+    }
 }

@@ -352,9 +352,9 @@ private fun SettingsPickerDialog(
                 .padding(horizontal = 20.dp)
                 .widthIn(max = 520.dp)
                 .heightIn(max = 640.dp),
-            shape = RoundedCornerShape(30.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 3.dp,
         ) {
             Column {
                 Row(
@@ -418,7 +418,7 @@ private fun PickerOptionRow(
         } else {
             Color.Transparent
         },
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -429,8 +429,8 @@ private fun PickerOptionRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                    maxLines = 1,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!subtitle.isNullOrBlank()) {
@@ -438,7 +438,7 @@ private fun PickerOptionRow(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -536,27 +536,33 @@ internal fun groupMicrosoftVoices(
 fun SettingsEntryRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Icon(YuraIcons.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

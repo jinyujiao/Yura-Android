@@ -40,7 +40,7 @@ fun TocPane(links: List<Link>, publication: Publication, currentLocator: Locator
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = activeIndex.coerceAtLeast(0))
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("目录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("目录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (entries.isEmpty()) {
                 Text("这本书没有提供目录。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -77,7 +77,7 @@ fun TocSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        shape = com.yura.app.ui.theme.YuraBottomSheetShape,
     ) {
         Column(
             modifier = Modifier
@@ -86,18 +86,15 @@ fun TocSheet(
                 .padding(horizontal = 18.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                "\u76ee\u5f55",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onBackground,
+            com.yura.app.ui.components.YuraBottomSheetTitle(
+                title = "\u76ee\u5f55",
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
             if (entries.isEmpty()) {
                 Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = MaterialTheme.shapes.large,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
@@ -139,18 +136,18 @@ private fun TocRow(
 ) {
     TextButton(
         onClick = { onGo(link) },
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                 } else if (depth == 0) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
+                    MaterialTheme.colorScheme.surfaceContainerHigh
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+                    MaterialTheme.colorScheme.surfaceContainerLow
                 },
-                shape = RoundedCornerShape(18.dp),
+                shape = MaterialTheme.shapes.medium,
             ),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
     ) {
@@ -162,7 +159,7 @@ private fun TocRow(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
-            fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
         )
     }

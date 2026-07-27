@@ -91,4 +91,16 @@ interface YuraDao {
 
     @Query("DELETE FROM ${DeletedReaderAnnotation.TABLE_NAME} WHERE ${DeletedReaderAnnotation.DELETED_AT} < :before")
     suspend fun deleteExpiredReaderAnnotationTombstones(before: Long)
+
+    @Query("SELECT * FROM ${ReadingSession.TABLE_NAME} ORDER BY ${ReadingSession.STARTED_AT} DESC")
+    fun readingSessions(): Flow<List<ReadingSession>>
+
+    @Query("SELECT * FROM ${ReadingSession.TABLE_NAME} ORDER BY ${ReadingSession.STARTED_AT} DESC")
+    suspend fun allReadingSessions(): List<ReadingSession>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReadingSession(session: ReadingSession)
+
+    @Query("DELETE FROM ${ReadingSession.TABLE_NAME}")
+    suspend fun deleteAllReadingSessions()
 }

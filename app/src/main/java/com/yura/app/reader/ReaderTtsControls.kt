@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -43,12 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yura.tts.SimpleTtsController
@@ -63,12 +68,16 @@ fun DraggableTtsFloatingButton(
     savePosition: (Pair<Float, Float>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BoxWithConstraints(modifier = modifier) {
+    BoxWithConstraints(modifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
         val density = LocalDensity.current
         var position by remember { mutableStateOf(loadPosition()) }
-        val maxX = with(density) { (maxWidth - 104.dp).toPx().coerceAtLeast(0f) }
+        var buttonSize by remember { mutableStateOf(IntSize.Zero) }
+        val measuredWidth = buttonSize.width.takeIf { it > 0 } ?: with(density) { 104.dp.roundToPx() }
+        val measuredHeight = buttonSize.height.takeIf { it > 0 } ?: with(density) { 48.dp.roundToPx() }
+        val maxX = (constraints.maxWidth - measuredWidth).coerceAtLeast(0).toFloat()
         val bottomReserve = if (controlsVisible) 116.dp else 28.dp
-        val maxY = with(density) { (maxHeight - bottomReserve - 48.dp).toPx().coerceAtLeast(0f) }
+        val maxY = (constraints.maxHeight - measuredHeight - with(density) { bottomReserve.toPx() })
+            .coerceAtLeast(0f)
 
         TtsFloatingButton(
             onClick = onClick,
@@ -94,7 +103,8 @@ fun DraggableTtsFloatingButton(
                             if (maxY <= 0f) 0f else nextY / maxY,
                         )
                     }
-                },
+                }
+                .onSizeChanged { buttonSize = it },
         )
     }
 }
@@ -154,7 +164,7 @@ fun TtsPanel(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        shape = com.yura.app.ui.theme.YuraBottomSheetShape,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -171,13 +181,9 @@ fun TtsPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("朗读控制", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                        Text(
-                            chapterTitle.ifBlank { "当前章节" },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        com.yura.app.ui.components.YuraBottomSheetTitle(
+                            title = "朗读控制",
+                            subtitle = chapterTitle.ifBlank { "当前章节" },
                         )
                     }
                     TtsStatusBadge(uiState.state)
@@ -199,8 +205,8 @@ fun TtsPanel(
 
             item {
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = MaterialTheme.shapes.large,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
@@ -212,7 +218,7 @@ fun TtsPanel(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("阅读进度", fontWeight = FontWeight.Bold)
+                            Text("阅读进度", fontWeight = FontWeight.SemiBold)
                             Text(
                                 if (uiState.paragraphTotal > 0) "段落 $paragraphNumber / ${uiState.paragraphTotal}" else "等待开始",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -296,9 +302,9 @@ fun TtsPanel(
 
             item {
                 Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(26.dp),
-                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
@@ -362,12 +368,12 @@ private fun TtsStatusBadge(state: TtsState) {
     } else {
         MaterialTheme.colorScheme.onPrimaryContainer
     }
-    Surface(color = containerColor, contentColor = contentColor, shape = RoundedCornerShape(999.dp)) {
+    Surface(color = containerColor, contentColor = contentColor, shape = MaterialTheme.shapes.small) {
         Text(
             label,
             modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
@@ -394,7 +400,7 @@ private fun TtsTransportButton(
             onClick = onClick,
             enabled = enabled,
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.72f else 0.34f),
+            color = if (enabled) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer,
             contentColor = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(48.dp),
         ) {
@@ -424,7 +430,7 @@ private fun TtsPrimaryButton(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
-            shadowElevation = 4.dp,
+            shadowElevation = 3.dp,
             modifier = Modifier.size(64.dp),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -443,6 +449,6 @@ private fun TtsPrimaryButton(
                 }
             }
         }
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
     }
 }

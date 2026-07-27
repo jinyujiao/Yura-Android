@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Home
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
@@ -36,6 +38,7 @@ object YuraIcons {
     val Add: ImageVector = Icons.Filled.Add
     val Back: ImageVector = Icons.AutoMirrored.Filled.ArrowBack
     val Check: ImageVector = Icons.Filled.Check
+    val Warning: ImageVector = Icons.Filled.WarningAmber
     val ChevronRight: ImageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight
     val Close: ImageVector = Icons.Filled.Close
     val Copy: ImageVector = Icons.Filled.ContentCopy
@@ -55,6 +58,7 @@ object YuraIcons {
     val ReadAloud: ImageVector = Icons.Filled.RecordVoiceOver
     val Search: ImageVector = Icons.Filled.Search
     val Settings: ImageVector = Icons.Filled.Settings
+    val Stats: ImageVector = Icons.AutoMirrored.Filled.ShowChart
     val SkipNext: ImageVector = Icons.Filled.SkipNext
     val SkipPrevious: ImageVector = Icons.Filled.SkipPrevious
     val Stop: ImageVector = Icons.Filled.Stop
