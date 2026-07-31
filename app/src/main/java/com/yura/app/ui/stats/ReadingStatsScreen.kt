@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -222,13 +223,17 @@ private fun ReadingTrend(days: List<ReadingDayStat>) {
                     }
                 }
             }
+            val monthBoundaryIndex = visibleDays.indexOfFirst { it.date.dayOfMonth == 1 }
             Row(
                 modifier = Modifier.fillMaxWidth().height(140.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                visibleDays.forEach { day ->
+                visibleDays.forEachIndexed { index, day ->
                     val ratio = day.totalMs.toFloat() / maxDuration.toFloat()
+                    val showMonthBoundary = day.date.dayOfMonth == 1
+                    val showFirst = index == 0 && (monthBoundaryIndex < 0 || monthBoundaryIndex > 1)
+                    val showLast = index == visibleDays.lastIndex && (monthBoundaryIndex < 0 || monthBoundaryIndex < visibleDays.lastIndex - 1)
                     Column(
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -247,12 +252,16 @@ private fun ReadingTrend(days: List<ReadingDayStat>) {
                             modifier = Modifier.fillMaxWidth().height(28.dp),
                             contentAlignment = Alignment.TopCenter,
                         ) {
-                            if (day.date.dayOfMonth == 1 || day == visibleDays.first() || day == visibleDays.last()) {
+                            if (showMonthBoundary || showFirst || showLast) {
                                 Text(
                                     day.date.dayOfMonth.toString(),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 5.dp),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier
+                                        .wrapContentWidth(unbounded = true)
+                                        .padding(top = 5.dp),
                                 )
                             }
                         }
