@@ -1024,6 +1024,12 @@ class ReaderActivity : FragmentActivity() {
         val locator = ReaderTtsProgressLocator.create(
             baseLocator = baseLocator,
             nextChapterTotalProgression = nextChapterTotalProgression,
+            fallbackTotalProgression = approximateTtsTotalProgression(
+                readingOrderIndex = readingOrderIndex,
+                paragraphIndex = paragraphIndex,
+                paragraphTotal = activeTtsParagraphTotal,
+                chapterTotal = activePublication.readingOrder.size,
+            ),
             paragraphIndex = paragraphIndex,
             paragraphTotal = activeTtsParagraphTotal,
         )
@@ -1036,6 +1042,21 @@ class ReaderActivity : FragmentActivity() {
             progressionSaver.schedule(activeBookId, locator.toJSON().toString())
             progressionSaver.flush()
         }
+    }
+
+    private fun approximateTtsTotalProgression(
+        readingOrderIndex: Int,
+        paragraphIndex: Int,
+        paragraphTotal: Int,
+        chapterTotal: Int,
+    ): Double? {
+        if (readingOrderIndex < 0 || chapterTotal <= 0) return null
+        val safeParagraphTotal = paragraphTotal.coerceAtLeast(1)
+        val resourceProgression = paragraphIndex
+            .coerceIn(0, safeParagraphTotal - 1)
+            .toDouble() / safeParagraphTotal.toDouble()
+        return ((readingOrderIndex + resourceProgression) / chapterTotal.toDouble())
+            .coerceIn(0.0, 1.0)
     }
 
     private fun currentReadingOrderIndex(

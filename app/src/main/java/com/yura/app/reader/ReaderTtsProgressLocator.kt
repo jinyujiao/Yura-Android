@@ -11,12 +11,14 @@ internal object ReaderTtsProgressLocator {
     fun create(
         baseLocator: Locator,
         nextChapterTotalProgression: Double?,
+        fallbackTotalProgression: Double? = null,
         paragraphIndex: Int,
         paragraphTotal: Int,
     ): Locator {
         val progressions = calculate(
             chapterStartTotalProgression = baseLocator.locations.totalProgression,
             nextChapterTotalProgression = nextChapterTotalProgression,
+            fallbackTotalProgression = fallbackTotalProgression,
             paragraphIndex = paragraphIndex,
             paragraphTotal = paragraphTotal,
         )
@@ -31,6 +33,7 @@ internal object ReaderTtsProgressLocator {
     fun calculate(
         chapterStartTotalProgression: Double?,
         nextChapterTotalProgression: Double?,
+        fallbackTotalProgression: Double? = null,
         paragraphIndex: Int,
         paragraphTotal: Int,
     ): Progressions {
@@ -43,7 +46,7 @@ internal object ReaderTtsProgressLocator {
                 ?.coerceIn(start, 1.0)
                 ?: 1.0
             (start + (end - start) * resourceProgression).coerceIn(0.0, 1.0)
-        }
+        } ?: fallbackTotalProgression?.coerceIn(0.0, 1.0)
         return Progressions(
             resource = resourceProgression,
             publication = publicationProgression,

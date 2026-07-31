@@ -29,4 +29,17 @@ class ReaderTtsProgressLocatorTest {
         assertEquals(0.75, result.resource, 0.0001)
         assertEquals(0.95, result.publication!!, 0.0001)
     }
+
+    @Test
+    fun usesFallbackPublicationProgressionWhenChapterPositionsAreUnavailable() {
+        val result = ReaderTtsProgressLocator.calculate(
+            chapterStartTotalProgression = null,
+            nextChapterTotalProgression = null,
+            fallbackTotalProgression = 0.37,
+            paragraphIndex = 2,
+            paragraphTotal = 8,
+        )
+
+        assertEquals(0.37, result.publication!!, 0.0001)
+    }
 }

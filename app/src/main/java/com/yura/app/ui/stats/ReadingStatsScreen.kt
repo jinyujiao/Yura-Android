@@ -225,29 +225,36 @@ private fun ReadingTrend(days: List<ReadingDayStat>) {
             Row(
                 modifier = Modifier.fillMaxWidth().height(140.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.Bottom,
+                verticalAlignment = Alignment.Top,
             ) {
                 visibleDays.forEach { day ->
                     val ratio = day.totalMs.toFloat() / maxDuration.toFloat()
                     Column(
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
                     ) {
-                        Surface(
-                            color = if (day.totalMs > 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp),
-                            modifier = Modifier.fillMaxWidth().height((ratio * 104f).coerceAtLeast(if (day.totalMs > 0L) 8f else 3f).dp),
-                        ) {}
-                        if (day.date.dayOfMonth == 1 || day == visibleDays.first() || day == visibleDays.last()) {
-                            Text(
-                                day.date.dayOfMonth.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 5.dp),
-                            )
-                        } else {
-                            Spacer(Modifier.height(17.dp))
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(112.dp),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Surface(
+                                color = if (day.totalMs > 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp),
+                                modifier = Modifier.fillMaxWidth().height((ratio * 104f).coerceAtLeast(if (day.totalMs > 0L) 8f else 3f).dp),
+                            ) {}
+                        }
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(28.dp),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            if (day.date.dayOfMonth == 1 || day == visibleDays.first() || day == visibleDays.last()) {
+                                Text(
+                                    day.date.dayOfMonth.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 5.dp),
+                                )
+                            }
                         }
                     }
                 }
