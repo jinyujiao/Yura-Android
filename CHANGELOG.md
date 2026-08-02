@@ -2,6 +2,10 @@
 
 Yura 的重要变更记录。后续发布条目由 `release.ps1` 根据上一个版本标签之后的 Git 提交自动生成。
 
+## [1.3.1] - 2026-08-02
+
+- fix: refine reader progress and publisher styles
+
 ## [1.3.0] - 2026-07-31
 
 - feat: add reading statistics and improve reader experience
