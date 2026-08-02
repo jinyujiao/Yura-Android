@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.WarningAmber
@@ -44,6 +46,8 @@ object YuraIcons {
     val Copy: ImageVector = Icons.Filled.ContentCopy
     val Delete: ImageVector = Icons.Filled.DeleteOutline
     val Edit: ImageVector = Icons.Filled.Edit
+    val ExpandLess: ImageVector = Icons.Filled.ExpandLess
+    val ExpandMore: ImageVector = Icons.Filled.ExpandMore
     val Export: ImageVector = Icons.Filled.FileDownload
     val Font: ImageVector = Icons.Filled.FormatSize
     val Highlight: ImageVector = Icons.Filled.Highlight

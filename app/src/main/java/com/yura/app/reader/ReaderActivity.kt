@@ -7,6 +7,7 @@ import com.yura.tts.core.TtsUiState
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
@@ -34,21 +35,22 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -81,6 +83,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -228,6 +231,16 @@ class ReaderActivity : FragmentActivity() {
         } ?: scheduleForegroundTtsSync(300)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        window.decorView.post(systemBarsController::reapply)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) systemBarsController.reapply()
+    }
+
     override fun onPause() {
         readerForeground = false
         readingStatsResumeJob?.cancel()
@@ -270,9 +283,24 @@ class ReaderActivity : FragmentActivity() {
         var correctionDraft by remember { mutableStateOf("") }
         var readerPreferences by remember { mutableStateOf(loadReaderPreferences()) }
         var autoReaderTheme by remember { mutableStateOf(ReaderPreferencesStore.isAutoTheme(this)) }
+        val windowSize = LocalWindowInfo.current.containerSize
+        val density = LocalDensity.current.density
+        val windowWidthDp = (windowSize.width / density).roundToInt()
+        val windowHeightDp = (windowSize.height / density).roundToInt()
+        val expandedLandscape = ReaderWindowPolicy.isExpandedLandscape(windowWidthDp, windowHeightDp)
         val systemDark = isSystemInDarkTheme()
-        val effectiveReaderPreferences = remember(readerPreferences, autoReaderTheme, systemDark) {
-            ReaderPreferencesStore.resolveTheme(readerPreferences, autoReaderTheme, systemDark)
+        val effectiveReaderPreferences = remember(
+            readerPreferences,
+            autoReaderTheme,
+            systemDark,
+            windowWidthDp,
+            windowHeightDp,
+        ) {
+            ReaderWindowPolicy.adaptPreferences(
+                preferences = ReaderPreferencesStore.resolveTheme(readerPreferences, autoReaderTheme, systemDark),
+                windowWidthDp = windowWidthDp,
+                windowHeightDp = windowHeightDp,
+            )
         }
         val ttsUiState by ttsController.state.collectAsStateWithLifecycle()
         val ttsActive = ttsUiState.state == TtsState.LOADING ||
@@ -310,12 +338,12 @@ class ReaderActivity : FragmentActivity() {
         }
 
         LaunchedEffect(controlsVisible) {
-            systemBarsController.setStatusBarVisible(controlsVisible)
+            systemBarsController.setSystemBarsVisible(controlsVisible)
         }
 
         DisposableEffect(Unit) {
             onDispose {
-                systemBarsController.setStatusBarVisible(true)
+                systemBarsController.setSystemBarsVisible(true)
             }
         }
 
@@ -339,6 +367,12 @@ class ReaderActivity : FragmentActivity() {
                 is ReaderState.Error -> ErrorReader(message = current.message, onBack = ::finish)
                 is ReaderState.Ready -> ReadyReader(
                     data = current,
+                    reserveHudSpace = expandedLandscape,
+                    readerBackgroundColor = Color(
+                        effectiveReaderPreferences.backgroundColor?.int
+                            ?: effectiveReaderPreferences.theme?.backgroundColor
+                            ?: Theme.LIGHT.backgroundColor,
+                    ),
                     controlsVisible = controlsVisible,
                     currentPage = currentPage,
                     totalPages = totalPages,
@@ -405,13 +439,22 @@ class ReaderActivity : FragmentActivity() {
                         ReaderPreferencesStore.saveAutoTheme(this@ReaderActivity, enabled)
                     },
                     onPreferencesPreviewChange = { preview ->
-                        val effective = ReaderPreferencesStore.resolveTheme(preview, autoReaderTheme, systemDark)
+                        val effective = ReaderWindowPolicy.adaptPreferences(
+                            preferences = ReaderPreferencesStore.resolveTheme(preview, autoReaderTheme, systemDark),
+                            windowWidthDp = windowWidthDp,
+                            windowHeightDp = windowHeightDp,
+                        )
                         activeReaderPreferences = effective
                         navigatorFragment?.submitPreferences(effective)
                         applyMediaIndentFix(effective)
-                    },                    onPreferencesChange = { updated ->
+                    },
+                    onPreferencesChange = { updated ->
                         readerPreferences = updated
-                        val effective = ReaderPreferencesStore.resolveTheme(updated, autoReaderTheme, systemDark)
+                        val effective = ReaderWindowPolicy.adaptPreferences(
+                            preferences = ReaderPreferencesStore.resolveTheme(updated, autoReaderTheme, systemDark),
+                            windowWidthDp = windowWidthDp,
+                            windowHeightDp = windowHeightDp,
+                        )
                         activeReaderPreferences = effective
                         saveReaderPreferences(updated)
                         navigatorFragment?.submitPreferences(effective)
@@ -574,6 +617,8 @@ class ReaderActivity : FragmentActivity() {
     @Composable
     private fun ReadyReader(
         data: ReaderState.Ready,
+        reserveHudSpace: Boolean,
+        readerBackgroundColor: Color,
         controlsVisible: Boolean,
         currentPage: Int,
         totalPages: Int,
@@ -587,20 +632,25 @@ class ReaderActivity : FragmentActivity() {
         onTts: () -> Unit,
         onPageChanged: (Int, Int, Locator) -> Unit,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val tablet = maxWidth >= 600.dp
-            if (tablet) {
-                Row(Modifier.fillMaxSize()) {
-                    TocPane(data.publication.tableOfContents, data.publication, currentLocator, onTocLink, Modifier.width(300.dp).fillMaxHeight())
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        EpubNavigatorHost(data = data, onPageChanged = onPageChanged)
-                        ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
-                    }
-                }
-            } else {
-                EpubNavigatorHost(data = data, onPageChanged = onPageChanged)
-                ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(readerBackgroundColor),
+        ) {
+            EpubNavigatorHost(
+                data = data,
+                onPageChanged = onPageChanged,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal),
+                    )
+                    .padding(
+                        top = if (reserveHudSpace) ReaderHudTopClearance else 0.dp,
+                        bottom = if (reserveHudSpace) ReaderHudBottomClearance else 0.dp,
+                    ),
+            )
+            ReaderHud(currentPage, totalPages, progressLabel, chapterTitle)
 
             AnimatedVisibility(
                 visible = controlsVisible,
@@ -1182,9 +1232,10 @@ class ReaderActivity : FragmentActivity() {
     private fun EpubNavigatorHost(
         data: ReaderState.Ready,
         onPageChanged: (Int, Int, Locator) -> Unit,
+        modifier: Modifier = Modifier,
     ) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = modifier,
             factory = { context ->
                 FragmentContainerView(context).apply {
                     id = View.generateViewId()

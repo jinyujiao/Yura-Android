@@ -127,7 +127,13 @@ fun LibraryScreen(
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val shelfColumns = if (maxWidth >= 840.dp) 4 else if (maxWidth >= 600.dp) 3 else 2
+            val shelfColumns = when {
+                maxWidth <= maxHeight && maxWidth >= 600.dp -> 3
+                maxWidth <= maxHeight -> 2
+                maxWidth >= 840.dp -> 4
+                maxWidth >= 600.dp -> 3
+                else -> 2
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(shelfColumns),
                 state = gridState,

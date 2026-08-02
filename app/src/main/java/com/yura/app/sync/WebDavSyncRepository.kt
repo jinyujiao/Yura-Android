@@ -68,7 +68,7 @@ class WebDavSyncRepository(context: Context) {
 
     private suspend fun downloadMissingBooks(settings: WebDavSettings, snapshot: SyncSnapshot): Int {
         val localIdentifiers = dao.allBooks().map { it.identifier }.toSet()
-        val deletedIdentifiers = dao.deletedBooks().map { it.identifier }.toSet() + snapshot.deletedBooks.map { it.identifier }
+        val deletedIdentifiers = dao.deletedBooks().map { it.identifier }.toSet()
         var downloaded = 0
 
         snapshot.books.forEach { remote ->
@@ -147,12 +147,22 @@ class WebDavSyncRepository(context: Context) {
     }
 
     private suspend fun mergeRemote(snapshot: SyncSnapshot): MergeResult {
-        val localDeletedByIdentifier = dao.deletedBooks().associateBy { it.identifier }
+        val localBooksByIdentifier = dao.allBooks().associateBy { it.identifier }
+        val localDeletedByIdentifier = dao.deletedBooks().associateBy { it.identifier }.toMutableMap()
         snapshot.deletedBooks.forEach { remoteDeleted ->
             val localDeleted = localDeletedByIdentifier[remoteDeleted.identifier]
-            if (localDeleted == null || remoteDeleted.deletedAt > localDeleted.deletedAt) {
+            val localBook = localBooksByIdentifier[remoteDeleted.identifier]
+            if (
+                BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                    remoteDeletedAt = remoteDeleted.deletedAt,
+                    localBookCreatedAt = localBook?.creationDate,
+                    localDeletedAt = localDeleted?.deletedAt,
+                )
+            ) {
                 dao.upsertDeletedBook(DeletedBook(remoteDeleted.identifier, remoteDeleted.deletedAt))
-                dao.bookByIdentifier(remoteDeleted.identifier)?.let { book ->
+                localDeletedByIdentifier[remoteDeleted.identifier] =
+                    DeletedBook(remoteDeleted.identifier, remoteDeleted.deletedAt)
+                localBook?.let { book ->
                     dao.deleteBookmarksForBook(book.id)
                     dao.deleteAnnotationsForBook(book.id)
                     dao.deleteBook(book.id)
@@ -162,9 +172,17 @@ class WebDavSyncRepository(context: Context) {
             }
         }
 
+        snapshot.books.forEach { remoteBook ->
+            val localDeleted = localDeletedByIdentifier[remoteBook.identifier]
+            if (BookSyncConflictPolicy.shouldRestoreFromRemoteBook(remoteBook.creationDate, localDeleted?.deletedAt)) {
+                dao.clearDeletedBook(remoteBook.identifier)
+                localDeletedByIdentifier.remove(remoteBook.identifier)
+            }
+        }
+
         val localBooks = dao.allBooks()
         val booksByIdentifier = localBooks.associateBy { it.identifier }
-        val deletedIdentifiers = dao.deletedBooks().map { it.identifier }.toSet()
+        val deletedIdentifiers = localDeletedByIdentifier.keys
         var progressCount = 0
         snapshot.books.forEach { remote ->
             if (remote.identifier in deletedIdentifiers) return@forEach

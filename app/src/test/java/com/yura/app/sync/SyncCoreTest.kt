@@ -65,4 +65,51 @@ class SyncCoreTest {
         assertFalse(ReadingSessionSyncMergePolicy.shouldApplyRemote(110, 10_000, 100, 12_000))
         assertFalse(ReadingSessionSyncMergePolicy.shouldApplyRemote(100, 10_000, 100, 9_000))
     }
+
+    @Test
+    fun reimportedLocalBookWinsOverOlderRemoteDeletion() {
+        assertFalse(
+            BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                remoteDeletedAt = 100,
+                localBookCreatedAt = 120,
+                localDeletedAt = null,
+            ),
+        )
+        assertTrue(
+            BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                remoteDeletedAt = 130,
+                localBookCreatedAt = 120,
+                localDeletedAt = null,
+            ),
+        )
+        assertTrue(
+            BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                remoteDeletedAt = 120,
+                localBookCreatedAt = 120,
+                localDeletedAt = null,
+            ),
+        )
+        assertFalse(
+            BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                remoteDeletedAt = 100,
+                localBookCreatedAt = null,
+                localDeletedAt = 110,
+            ),
+        )
+        assertFalse(
+            BookSyncConflictPolicy.shouldApplyRemoteDeletion(
+                remoteDeletedAt = 0,
+                localBookCreatedAt = null,
+                localDeletedAt = null,
+            ),
+        )
+    }
+
+    @Test
+    fun reimportedRemoteBookClearsOlderLocalDeletion() {
+        assertTrue(BookSyncConflictPolicy.shouldRestoreFromRemoteBook(remoteCreatedAt = 120, localDeletedAt = 100))
+        assertFalse(BookSyncConflictPolicy.shouldRestoreFromRemoteBook(remoteCreatedAt = 100, localDeletedAt = 100))
+        assertFalse(BookSyncConflictPolicy.shouldRestoreFromRemoteBook(remoteCreatedAt = 90, localDeletedAt = 100))
+        assertFalse(BookSyncConflictPolicy.shouldRestoreFromRemoteBook(remoteCreatedAt = 120, localDeletedAt = null))
+    }
 }
