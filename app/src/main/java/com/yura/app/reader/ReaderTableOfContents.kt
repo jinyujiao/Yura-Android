@@ -69,7 +69,7 @@ fun TocSheet(
         expandedPaths = expandedPaths + activeEntry?.ancestors.orEmpty()
     }
 
-    LaunchedEffect(activeIndex) {
+    LaunchedEffect(activeEntry?.path) {
         if (activeIndex >= 0) listState.scrollToItem(activeIndex)
     }
 
