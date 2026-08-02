@@ -350,10 +350,7 @@ private fun ShelfBookCard(
             Text(book.author.ifBlank { "未知作者" }, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(progress, maxLines = 1, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         }
-        Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f))) {
-            Box(modifier = Modifier.fillMaxWidth(progressFraction).height(3.dp).clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.86f)))
-        }
+
     }
 }
 

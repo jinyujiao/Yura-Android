@@ -1251,9 +1251,11 @@ class ReaderActivity : FragmentActivity() {
     private fun applyMediaIndentFix(preferences: EpubPreferences = activeReaderPreferences) {
         cancelPendingMediaIndentFixes()
         ReaderMediaStyleFixer.apply(navigatorFragment?.publicationView, preferences)
+        ReaderPublisherColorFixer.apply(navigatorFragment?.publicationView, preferences)
         MEDIA_INDENT_FIX_DELAYS_MS.forEach { delayMs ->
             val runnable = Runnable {
                 ReaderMediaStyleFixer.apply(navigatorFragment?.publicationView, activeReaderPreferences)
+                ReaderPublisherColorFixer.apply(navigatorFragment?.publicationView, activeReaderPreferences)
             }
             mediaIndentFixRunnables += runnable
             window.decorView.postDelayed(runnable, delayMs)
@@ -1291,7 +1293,7 @@ class ReaderActivity : FragmentActivity() {
         private const val EXTRA_INITIAL_LOCATOR = "initial_locator"
         private const val EXTRA_PREVIEW_MODE = "preview_mode"
         private const val NAVIGATOR_TAG = "navigator"
-        private val MEDIA_INDENT_FIX_DELAYS_MS = longArrayOf(120L, 360L, 800L)
+        private val MEDIA_INDENT_FIX_DELAYS_MS = longArrayOf(120L, 360L, 800L, 1_600L)
         fun intent(context: Context, bookId: Long): Intent =
             Intent(context, ReaderActivity::class.java)
                 .putExtra(EXTRA_BOOK_ID, bookId)

@@ -66,21 +66,22 @@ fun ReaderHud(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
-        Row(
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
                 "$currentPage / $totalPages",
+                modifier = Modifier.align(Alignment.Center),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
             )
             Text(
                 progressLabel,
+                modifier = Modifier.align(Alignment.CenterEnd),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
             )
